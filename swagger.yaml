@@ -1,0 +1,3909 @@
+openapi: 3.0.3
+info:
+  title: Del-Pick API
+  description: API for Del-Pick, a food delivery service application enabling customers to order food, drivers to deliver orders, and store owners to manage their menus and orders.
+  version: 1.0.0
+  contact:
+    name: API Support
+    email: support@delpick.id
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: https://delpick.horas-code.my.id/api/v1
+    description: Production Server
+  - url: http://localhost:6100/api/v1
+    description: Development Server
+
+tags:
+  - name: Authentication
+    description: Endpoints for user authentication and profile management
+  - name: Stores
+    description: Endpoints for managing stores and their details
+  - name: Customers
+    description: Endpoints for managing customer accounts (admin only)
+  - name: Menu Items
+    description: Endpoints for managing menu items in stores
+  - name: Orders
+    description: Endpoints for creating, managing, and reviewing orders
+  - name: Drivers
+    description: Endpoints for managing drivers and their activities
+  - name: Driver Requests
+    description: Endpoints for managing driver delivery requests
+  - name: Tracking
+    description: Endpoints for tracking order delivery status
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags:
+        - Authentication
+      summary: Register a new user
+      description: Creates a new user account with the default role of 'customer'. Admins can specify other roles (driver, owner).
+      operationId: registerUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: User registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: User registered successfully
+                data:
+                  token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                  user:
+                    id: 1
+                    name: John Doe
+                    email: john@example.com
+                    phone: "08123456789"
+                    role: customer
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Email already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/login:
+    post:
+      tags:
+        - Authentication
+      summary: Log in a user
+      description: Authenticates a user and returns a JWT token along with user details based on their role.
+      operationId: loginUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                customer:
+                  summary: Customer login
+                  value:
+                    statusCode: 200
+                    message: Login successful
+                    data:
+                      token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      user:
+                        id: 1
+                        name: John Doe
+                        email: john@example.com
+                        role: customer
+                driver:
+                  summary: Driver login
+                  value:
+                    statusCode: 200
+                    message: Login successful
+                    data:
+                      token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+                      user:
+                        id: 2
+                        name: Jane Driver
+                        email: jane@example.com
+                        role: driver
+                      driver:
+                        id: 1
+                        userId: 2
+                        vehicle_number: ABC123
+                        status: active
+        '401':
+          description: Invalid credentials
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Account not verified
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/profile:
+    get:
+      tags:
+        - Authentication
+      summary: Retrieve user profile
+      description: Retrieves profile information for the authenticated user, including role-specific details (e.g., driver or store data).
+      operationId: getUserProfile
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              examples:
+                customer:
+                  summary: Customer profile
+                  value:
+                    statusCode: 200
+                    message: Profile retrieved successfully
+                    data:
+                      user:
+                        id: 1
+                        name: John Doe
+                        email: john@example.com
+                        role: customer
+                driver:
+                  summary: Driver profile
+                  value:
+                    statusCode: 200
+                    message: Profile retrieved successfully
+                    data:
+                      user:
+                        id: 2
+                        name: Jane Driver
+                        email: jane@example.com
+                        role: driver
+                      driver:
+                        id: 1
+                        userId: 2
+                        vehicle_number: ABC123
+                        status: active
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/forgot-password:
+    post:
+      tags:
+        - Authentication
+      summary: Request password reset
+      description: Sends a password reset email to the specified email address if the user exists.
+      operationId: requestPasswordReset
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  example: john@example.com
+      responses:
+        '200':
+          description: Password reset email sent successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Password reset email sent
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/reset-password:
+    post:
+      tags:
+        - Authentication
+      summary: Reset user password
+      description: Resets the user's password using a valid reset token.
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - newPassword
+              properties:
+                token:
+                  type: string
+                  example: reset-token-123
+                newPassword:
+                  type: string
+                  minLength: 6
+                  example: newpassword123
+      responses:
+        '200':
+          description: Password reset successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Password reset successfully
+        '400':
+          description: Invalid or expired token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /auth/update-profile:
+    put:
+      tags:
+        - Authentication
+      summary: Update user profile
+      description: Updates the authenticated user's profile, including name, email, password, and avatar.
+      operationId: updateUserProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  minLength: 3
+                  maxLength: 50
+                  example: John Doe Updated
+                email:
+                  type: string
+                  format: email
+                  example: john.updated@example.com
+                password:
+                  type: string
+                  minLength: 6
+                  example: newpassword123
+                avatar:
+                  type: string
+                  description: Base64 encoded image
+                  example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+      responses:
+        '200':
+          description: Profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Profile updated successfully
+                data:
+                  user:
+                    id: 1
+                    name: John Doe Updated
+                    email: john.updated@example.com
+                    role: customer
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Store Endpoints
+  /stores:
+    get:
+      tags:
+        - Stores
+      summary: Retrieve all stores
+      description: Retrieves a paginated list of all stores, with optional search by name.
+      operationId: getAllStores
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/searchParam'
+      responses:
+        '200':
+          description: Stores retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StoreListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Stores
+      summary: Create a new store
+      description: Creates a new store and associated owner account. Requires admin privileges.
+      operationId: createStore
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateStoreRequest'
+      responses:
+        '201':
+          description: Store created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Store created successfully
+                data:
+                  store:
+                    id: 1
+                    name: Tasty Bites
+                    address: 123 Food Street
+                    status: active
+                  owner:
+                    id: 1
+                    name: Store Owner
+                    email: owner@example.com
+                    role: owner
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stores/{storeId}:
+    get:
+      tags:
+        - Stores
+      summary: Retrieve store by ID
+      description: Retrieves detailed information about a specific store, including its owner and menu items.
+      operationId: getStoreById
+      parameters:
+        - $ref: '#/components/parameters/storeIdParam'
+      responses:
+        '200':
+          description: Store details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Store details retrieved successfully
+                data:
+                  store:
+                    id: 1
+                    name: Tasty Bites
+                    address: 123 Food Street
+                    status: active
+                  owner:
+                    id: 1
+                    name: Store Owner
+                    email: owner@example.com
+                  menuItems:
+                    - id: 1
+                      name: Pizza
+                      price: 10.99
+                  rating: 4.5
+                  reviewCount: 100
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Stores
+      summary: Update store
+      description: Updates store information. Requires store owner or admin privileges.
+      operationId: updateStore
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/storeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStoreRequest'
+      responses:
+        '200':
+          description: Store updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Store updated successfully
+                data:
+                  id: 1
+                  name: Tasty Bites Updated
+                  address: 456 Food Street
+                  status: active
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner or admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Stores
+      summary: Delete store
+      description: Deletes a store and associated data. Requires admin or store owner privileges.
+      operationId: deleteStore
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/storeIdParam'
+      responses:
+        '200':
+          description: Store deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Store deleted successfully
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner or admin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stores/update:
+    put:
+      tags:
+        - Stores
+      summary: Update store by logged-in owner
+      description: Updates the store owned by the authenticated store owner.
+      operationId: updateStoreByOwner
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStoreRequest'
+      responses:
+        '200':
+          description: Store updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Store updated successfully
+                data:
+                  id: 1
+                  name: Tasty Bites Updated
+                  address: 456 Food Street
+                  status: active
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /stores/{storeId}/status:
+    patch:
+      tags:
+        - Stores
+      summary: Update store status
+      description: Updates the status of a store to active or inactive. Requires admin privileges.
+      operationId: updateStoreStatus
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/storeIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: Store status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Store status updated successfully
+                data:
+                  id: 1
+                  name: Tasty Bites
+                  status: active
+        '400':
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Customer Endpoints
+  /customers:
+    get:
+      tags:
+        - Customers
+      summary: Retrieve all customers
+      description: Retrieves a paginated list of all customers. Requires admin privileges.
+      operationId: getAllCustomers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/searchParam'
+      responses:
+        '200':
+          description: Customers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CustomerListResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Customers
+      summary: Create a new customer
+      description: Creates a new customer account. Requires admin privileges.
+      operationId: createCustomer
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '201':
+          description: Customer created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Customer created successfully
+                data:
+                  id: 1
+                  name: John Doe
+                  email: john@example.com
+                  role: customer
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /customers/{customerId}:
+    get:
+      tags:
+        - Customers
+      summary: Retrieve customer by ID
+      description: Retrieves detailed information about a specific customer. Requires admin privileges.
+      operationId: getCustomerById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/customerIdParam'
+      responses:
+        '200':
+          description: Customer details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Customer details retrieved successfully
+                data:
+                  id: 1
+                  name: John Doe
+                  email: john@example.com
+                  role: customer
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Customers
+      summary: Update customer
+      description: Updates customer information. Requires admin privileges.
+      operationId: updateCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/customerIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Customer updated successfully
+                data:
+                  id: 1
+                  name: John Doe Updated
+                  email: john.updated@example.com
+                  role: customer
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Customers
+      summary: Delete customer
+      description: Deletes a customer account. Requires admin privileges.
+      operationId: deleteCustomer
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/customerIdParam'
+      responses:
+        '200':
+          description: Customer deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Customer deleted successfully
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Menu Item Endpoints
+  /menu-items:
+    get:
+      tags:
+        - Menu Items
+      summary: Retrieve all menu items
+      description: Retrieves a paginated list of menu items, optionally filtered by store ID.
+      operationId: getAllMenuItems
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/storeIdQueryParam'
+      responses:
+        '200':
+          description: Menu items retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItemListResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Menu Items
+      summary: Create a new menu item
+      description: Creates a new menu item for a store. Requires store owner privileges.
+      operationId: createMenuItem
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMenuItemRequest'
+      responses:
+        '201':
+          description: Menu item created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Menu item created successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  name: Pizza
+                  price: 10.99
+                  isAvailable: true
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /menu-items/{menuItemId}:
+    get:
+      tags:
+        - Menu Items
+      summary: Retrieve menu item by ID
+      description: Retrieves detailed information about a specific menu item.
+      operationId: getMenuItemById
+      parameters:
+        - $ref: '#/components/parameters/menuItemIdParam'
+      responses:
+        '200':
+          description: Menu item retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Menu item retrieved successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  name: Pizza
+                  price: 10.99
+                  isAvailable: true
+        '404':
+          description: Menu item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Menu Items
+      summary: Update menu item
+      description: Updates a menu item's information. Requires store owner privileges.
+      operationId: updateMenuItem
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/menuItemIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMenuItemRequest'
+      responses:
+        '200':
+          description: Menu item updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Menu item updated successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  name: Pizza Updated
+                  price: 11.99
+                  isAvailable: true
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Menu item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Menu Items
+      summary: Delete menu item
+      description: Deletes a menu item. Requires store owner privileges.
+      operationId: deleteMenuItem
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/menuItemIdParam'
+      responses:
+        '200':
+          description: Menu item deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Menu item deleted successfully
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Menu item not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /menu-items/store/{storeId}:
+    get:
+      tags:
+        - Menu Items
+      summary: Retrieve menu items by store ID
+      description: Retrieves a paginated list of menu items for a specific store.
+      operationId: getMenuItemsByStoreId
+      parameters:
+        - $ref: '#/components/parameters/storeIdParam'
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+      responses:
+        '200':
+          description: Menu items retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MenuItemListResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Order Endpoints
+  /orders:
+    post:
+      tags:
+        - Orders
+      summary: Create a new order
+      description: Places a new food delivery order. Requires customer privileges.
+      operationId: createOrder
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateOrderRequest'
+      responses:
+        '201':
+          description: Order created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Order created successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  customerId: 1
+                  order_status: pending
+                  total: 15.99
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/user:
+    get:
+      tags:
+        - Orders
+      summary: Retrieve customer orders
+      description: Retrieves a paginated list of orders for the authenticated customer, optionally filtered by status.
+      operationId: getCustomerOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/orderStatusParam'
+      responses:
+        '200':
+          description: Customer orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/store:
+    get:
+      tags:
+        - Orders
+      summary: Retrieve store orders
+      description: Retrieves a paginated list of orders for the authenticated store owner's store, optionally filtered by status.
+      operationId: getStoreOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/orderStatusParam'
+      responses:
+        '200':
+          description: Store orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OrderListResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Store not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{orderId}:
+    get:
+      tags:
+        - Orders
+      summary: Retrieve order by ID
+      description: Retrieves detailed information about a specific order, including items, store, customer, and driver details.
+      operationId: getOrderById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Order details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Order details retrieved successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  customerId: 1
+                  order_status: pending
+                  total: 15.99
+                  items:
+                    - id: 1
+                      name: Pizza
+                      price: 10.99
+                      quantity: 1
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{orderId}/process:
+    put:
+      tags:
+        - Orders
+      summary: Process order
+      description: Approves or rejects an order. Requires store owner privileges.
+      operationId: processOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessOrderRequest'
+      responses:
+        '200':
+          description: Order processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Order processed successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  customerId: 1
+                  order_status: approved
+                  total: 15.99
+        '400':
+          description: Invalid action or order not in pending status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the store owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/{orderId}/cancel:
+    put:
+      tags:
+        - Orders
+      summary: Cancel order
+      description: Cancels an order. Requires customer privileges and order must be in a cancellable state.
+      operationId: cancelOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Order cancelled successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Order cancelled successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  customerId: 1
+                  order_status: cancelled
+                  total: 15.99
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the customer or order not cancellable
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/review:
+    post:
+      tags:
+        - Orders
+      summary: Create order review
+      description: Creates a review for a delivered order, rating the store and/or driver. Requires customer privileges.
+      operationId: createOrderReview
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReviewRequest'
+      responses:
+        '201':
+          description: Review created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Review created successfully
+                data:
+                  id: 1
+                  orderId: 1
+                  rating: 5
+                  comment: Great service!
+        '400':
+          description: Order not delivered or review already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the customer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /orders/status:
+    put:
+      tags:
+        - Orders
+      summary: Update order status
+      description: Updates the status of an order. Requires admin privileges.
+      operationId: updateOrderStatus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOrderStatusRequest'
+      responses:
+        '200':
+          description: Order status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Order status updated successfully
+                data:
+                  id: 1
+                  storeId: 1
+                  customerId: 1
+                  order_status: delivered
+                  total: 15.99
+        '400':
+          description: Invalid status transition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Driver Endpoints
+  /drivers:
+    get:
+      tags:
+        - Drivers
+      summary: Retrieve all drivers
+      description: Retrieves a paginated list of all drivers. Accessible to authenticated users.
+      operationId: getAllDrivers
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+      responses:
+        '200':
+          description: Drivers retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverListResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Drivers
+      summary: Create a new driver
+      description: Creates a new driver account. Requires admin privileges.
+      operationId: createDriver
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDriverRequest'
+      responses:
+        '201':
+          description: Driver created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 201
+                message: Driver created successfully
+                data:
+                  user:
+                    id: 2
+                    name: Jane Driver
+                    email: jane@example.com
+                    role: driver
+                  driver:
+                    id: 1
+                    userId: 2
+                    vehicle_number: ABC123
+                    status: inactive
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/{driverId}:
+    get:
+      tags:
+        - Drivers
+      summary: Retrieve driver by ID
+      description: Retrieves detailed information about a specific driver, including associated user data.
+      operationId: getDriverById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverIdParam'
+      responses:
+        '200':
+          description: Driver details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver details retrieved successfully
+                data:
+                  id: 1
+                  userId: 2
+                  vehicle_number: ABC123
+                  status: active
+                  user:
+                    id: 2
+                    name: Jane Driver
+                    email: jane@example.com
+                    role: driver
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Drivers
+      summary: Update driver
+      description: Updates a driver's information. Requires admin privileges.
+      operationId: updateDriver
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDriverRequest'
+      responses:
+        '200':
+          description: Driver updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver updated successfully
+                data:
+                  id: 1
+                  userId: 2
+                  vehicle_number: XYZ789
+                  status: active
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Drivers
+      summary: Delete driver
+      description: Deletes a driver and associated user account. Requires admin privileges.
+      operationId: deleteDriver
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverIdParam'
+      responses:
+        '200':
+          description: Driver deleted successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver deleted successfully
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Requires admin privileges
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/location:
+    put:
+      tags:
+        - Drivers
+      summary: Update driver location
+      description: Updates the real-time location of the authenticated driver. Requires driver privileges.
+      operationId: updateDriverLocation
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDriverLocationRequest'
+      responses:
+        '200':
+          description: Driver location updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver location updated successfully
+                data:
+                  latitude: -6.12345678
+                  longitude: 106.12345678
+                  updatedAt: "2025-04-29T09:16:52.000Z"
+        '400':
+          description: Invalid location data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/{driverId}/location:
+    get:
+      tags:
+        - Drivers
+      summary: Retrieve driver location
+      description: Retrieves the current location of a specific driver. Accessible to authenticated users (e.g., admins or customers tracking an order).
+      operationId: getDriverLocation
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverIdParam'
+      responses:
+        '200':
+          description: Driver location retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver location retrieved successfully
+                data:
+                  driverId: 1
+                  name: Jane Driver
+                  latitude: -6.12345678
+                  longitude: 106.12345678
+                  lastUpdated: "2025-04-29T09:16:52.000Z"
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found or location not available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/update:
+    put:
+      tags:
+        - Drivers
+      summary: Update driver profile
+      description: Updates the profile of the authenticated driver, including user and driver details.
+      operationId: updateDriverProfile
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDriverRequest'
+      responses:
+        '200':
+          description: Driver profile updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver profile updated successfully
+                data:
+                  id: 1
+                  userId: 2
+                  vehicle_number: XYZ789
+                  status: active
+                  user:
+                    id: 2
+                    name: Jane Driver Updated
+                    email: jane.updated@example.com
+        '400':
+          description: Invalid input data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/status:
+    put:
+      tags:
+        - Drivers
+      summary: Update driver status
+      description: Updates the status of the authenticated driver to active or inactive.
+      operationId: updateDriverStatus
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStatusRequest'
+      responses:
+        '200':
+          description: Driver status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver status updated successfully
+                data:
+                  id: 1
+                  userId: 2
+                  vehicle_number: ABC123
+                  status: active
+        '400':
+          description: Invalid status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /drivers/orders:
+    get:
+      tags:
+        - Drivers
+      summary: Retrieve driver orders
+      description: Retrieves a paginated list of orders assigned to the authenticated driver, optionally filtered by status.
+      operationId: getDriverOrders
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/orderStatusParam'
+      responses:
+        '200':
+          description: Driver orders retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverOrdersResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Driver Request Endpoints
+  /driver-requests:
+    get:
+      tags:
+        - Driver Requests
+      summary: Retrieve driver requests
+      description: Retrieves a paginated list of delivery requests for the authenticated driver, optionally filtered by status.
+      operationId: getDriverRequests
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/pageParam'
+        - $ref: '#/components/parameters/limitParam'
+        - $ref: '#/components/parameters/requestStatusParam'
+      responses:
+        '200':
+          description: Driver requests retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DriverRequestListResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not a driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /driver-requests/{requestId}:
+    get:
+      tags:
+        - Driver Requests
+      summary: Retrieve driver request by ID
+      description: Retrieves detailed information about a specific delivery request, including order and store details.
+      operationId: getDriverRequestById
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverRequestIdParam'
+      responses:
+        '200':
+          description: Driver request details retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver request details retrieved successfully
+                data:
+                  request:
+                    id: 1
+                    orderId: 1
+                    driverId: 1
+                    status: pending
+                  order:
+                    id: 1
+                    storeId: 1
+                    customerId: 1
+                    order_status: approved
+                  store:
+                    id: 1
+                    name: Tasty Bites
+                  customer:
+                    id: 1
+                    name: John Doe
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the assigned driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Driver Requests
+      summary: Respond to driver request
+      description: Accepts or rejects a delivery request. Requires driver privileges.
+      operationId: respondToDriverRequest
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/driverRequestIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RespondToRequest'
+      responses:
+        '200':
+          description: Driver request processed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Driver request processed successfully
+                data:
+                  id: 1
+                  orderId: 1
+                  driverId: 1
+                  status: accepted
+        '400':
+          description: Invalid action
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the assigned driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Driver request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  # Tracking Endpoints
+  /tracking/{orderId}:
+    get:
+      tags:
+        - Tracking
+      summary: Track order
+      description: Retrieves real-time tracking information for an order, including driver location and estimated delivery time.
+      operationId: trackOrder
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Tracking information retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Tracking information retrieved successfully
+                data:
+                  orderId: 1
+                  status: on_the_way
+                  storeLocation:
+                    latitude: -6.12345678
+                    longitude: 106.12345678
+                  driverLocation:
+                    latitude: -6.12445678
+                    longitude: 106.12445678
+                  deliveryAddress: 123 Customer Street
+                  estimatedDeliveryTime: "2025-04-29T10:00:00.000Z"
+                  driver:
+                    id: 1
+                    name: Jane Driver
+                    vehicle_number: ABC123
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Not the customer or driver
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /tracking/{orderId}/start:
+    put:
+      tags:
+        - Tracking
+      summary: Start order delivery
+      description: Allows an assigned driver to mark an order as being delivered (on_delivery status). The order must be in 'accepted' status, and the driver must be authenticated and assigned to the order.
+      operationId: startDelivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Delivery started successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Pengantaran dimulai
+                data:
+                  orderId: 1
+                  status: on_delivery
+                  startedAt: "2025-04-29T10:00:00.000Z"
+        '400':
+          description: Invalid request - Order not in accepted status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 400
+                message: Order tidak dalam status yang dapat dimulai
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Driver not assigned to the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found or driver not assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+             
+  /tracking/{orderId}/complete:
+    put:
+      tags:
+        - Tracking
+      summary: Complete order delivery
+      description: Allows an assigned driver to mark an order as delivered. The order must be in 'on_delivery' status, and the driver must be authenticated and assigned to the order.
+      operationId: completeDelivery
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/orderIdParam'
+      responses:
+        '200':
+          description: Delivery completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuccessResponse'
+              example:
+                statusCode: 200
+                message: Pengantaran selesai
+                data:
+                  orderId: 1
+                  status: delivered
+                  deliveredAt: "2025-04-29T10:30:00.000Z"
+        '400':
+          description: Invalid request - Order not in on_delivery status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                statusCode: 400
+                message: Order tidak dalam status pengantaran
+        '401':
+          description: Unauthorized - Invalid or missing token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: Forbidden - Driver not assigned to the order
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Order not found or driver not assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          description: Internal server error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    pageParam:
+      name: page
+      in: query
+      description: Page number for pagination
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    limitParam:
+      name: limit
+      in: query
+      description: Number of items per page
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 10
+
+    searchParam:
+      name: search
+      in: query
+      description: Search keyword for filtering by name or email
+      required: false
+      schema:
+        type: string
+
+    storeIdParam:
+      name: storeId
+      in: path
+      description: ID of the store
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    storeIdQueryParam:
+      name: storeId
+      in: query
+      description: Filter by store ID
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+
+    menuItemIdParam:
+      name: menuItemId
+      in: path
+      description: ID of the menu item
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    orderIdParam:
+      name: orderId
+      in: path
+      description: ID of the order
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    orderStatusParam:
+      name: status
+      in: query
+      description: Filter by order status
+      required: false
+      schema:
+        type: string
+        enum: [pending, approved, preparing, on_delivery, delivered, cancelled]
+
+    driverRequestIdParam:
+      name: requestId
+      in: path
+      description: ID of the driver request
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    requestStatusParam:
+      name: status
+      in: query
+      description: Filter by driver request status
+      required: false
+      schema:
+        type: string
+        enum: [pending, accepted, rejected, expired]
+
+    driverIdParam:
+      name: driverId
+      in: path
+      description: ID of the driver
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+    customerIdParam:
+      name: customerId
+      in: path
+      description: ID of the customer
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+
+  schemas:
+    # Generic Response Schemas
+    SuccessResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 200
+        message:
+          type: string
+          example: Operation successful
+        data:
+          type: object
+          nullable: true
+      required:
+        - statusCode
+        - message
+
+    ErrorResponse:
+      type: object
+      properties:
+        statusCode:
+          type: integer
+          example: 400
+        message:
+          type: string
+          example: An error occurred
+        errors:
+          type: string
+          nullable: true
+          example: Detailed error message
+      required:
+        - statusCode
+        - message
+
+    # Authentication Schemas
+    RegisterRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - phone
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: John Doe
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: john@example.com
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: password123
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08123456789"
+        role:
+          type: string
+          enum: [customer, driver, owner]
+          default: customer
+          example: customer
+
+    LoginRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        password:
+          type: string
+          example: password123
+
+    # User Schemas
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        phone:
+          type: string
+          example: "08123456789"
+        role:
+          type: string
+          enum: [admin, customer, driver, owner]
+          example: customer
+        avatar:
+          type: string
+          format: uri
+          example: https://example.com/avatars/john.jpg
+          nullable: true
+        isVerified:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    # Store Schemas
+    Store:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Tasty Bites
+        address:
+          type: string
+          example: 123 Food Street
+        description:
+          type: string
+          example: Best food in town
+          nullable: true
+        openTime:
+          type: string
+          example: "09:00"
+          nullable: true
+        closeTime:
+          type: string
+          example: "21:00"
+          nullable: true
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/stores/tasty-bites.jpg
+          nullable: true
+        phone:
+          type: string
+          example: "08123456789"
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+          nullable: true
+        distance:
+          type: number
+          format: float
+          example: 2.5
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+          example: active
+        user:
+          $ref: '#/components/schemas/User'
+          nullable: true
+
+    StoreListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 50
+        totalPages:
+          type: integer
+          example: 5
+        currentPage:
+          type: integer
+          example: 1
+        stores:
+          type: array
+          items:
+            $ref: '#/components/schemas/Store'
+
+    StoreWithOwner:
+      type: object
+      properties:
+        store:
+          $ref: '#/components/schemas/Store'
+        owner:
+          $ref: '#/components/schemas/User'
+
+    StoreDetail:
+      type: object
+      properties:
+        store:
+          $ref: '#/components/schemas/Store'
+        owner:
+          $ref: '#/components/schemas/User'
+        menuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+        rating:
+          type: number
+          format: float
+          example: 4.5
+        reviewCount:
+          type: integer
+          example: 100
+
+    CreateStoreRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - phone
+        - storeName
+        - address
+      properties:
+        name:
+          type: string
+          example: Store Owner
+        email:
+          type: string
+          format: email
+          example: owner@example.com
+        password:
+          type: string
+          minLength: 6
+          example: password123
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08123456789"
+        storeName:
+          type: string
+          example: Tasty Bites
+        address:
+          type: string
+          example: 123 Food Street
+        description:
+          type: string
+          example: Best food in town
+          nullable: true
+        openTime:
+          type: string
+          example: "09:00"
+          nullable: true
+        closeTime:
+          type: string
+          example: "21:00"
+          nullable: true
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+          nullable: true
+
+    UpdateStoreRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          example: Store Owner Updated
+          nullable: true
+        email:
+          type: string
+          format: email
+          example: owner.updated@example.com
+          nullable: true
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08987654321"
+          nullable: true
+        password:
+          type: string
+          minLength: 6
+          example: newpassword123
+          nullable: true
+        storeName:
+          type: string
+          example: Tasty Bites Updated
+          nullable: true
+        address:
+          type: string
+          example: 456 Food Street
+          nullable: true
+        description:
+          type: string
+          example: Updated description
+          nullable: true
+        openTime:
+          type: string
+          example: "08:00"
+          nullable: true
+        closeTime:
+          type: string
+          example: "22:00"
+          nullable: true
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          example: -6.12445678
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          example: 106.12445678
+          nullable: true
+
+    UpdateStatusRequest:
+      type: object
+      required:
+        - status
+      properties:
+        status:
+          type: string
+          enum: [active, inactive]
+          example: active
+
+    # Customer Schemas
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          format: email
+          example: john@example.com
+        phone:
+          type: string
+          example: "08123456789"
+        role:
+          type: string
+          enum: [customer]
+          example: customer
+        avatar:
+          type: string
+          format: uri
+          example: https://example.com/avatars/john.jpg
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    CustomerListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 25
+        totalPages:
+          type: integer
+          example: 3
+        currentPage:
+          type: integer
+          example: 1
+        customers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Customer'
+
+    CreateCustomerRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - phone
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: John Doe
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: john@example.com
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: password123
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08123456789"
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: John Doe Updated
+          nullable: true
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: john.updated@example.com
+          nullable: true
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: newpassword123
+          nullable: true
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08987654321"
+          nullable: true
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+
+    # Driver Schemas
+    Driver:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 2
+        vehicle_number:
+          type: string
+          example: ABC123
+        rating:
+          type: number
+          format: float
+          example: 4.8
+          nullable: true
+        reviews_count:
+          type: integer
+          example: 50
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+          example: active
+        user:
+          $ref: '#/components/schemas/User'
+          nullable: true
+
+    DriverListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 20
+        totalPages:
+          type: integer
+          example: 2
+        currentPage:
+          type: integer
+          example: 1
+        drivers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Driver'
+
+    CreateDriverRequest:
+      type: object
+      required:
+        - name
+        - email
+        - password
+        - phone
+        - vehicle_number
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Jane Driver
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: jane@example.com
+        password:
+          type: string
+          minLength: 6
+          maxLength: 100
+          example: password123
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08123456789"
+        vehicle_number:
+          type: string
+          maxLength: 20
+          example: ABC123
+
+    UpdateDriverRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 3
+          maxLength: 50
+          example: Jane Driver Updated
+          nullable: true
+        email:
+          type: string
+          format: email
+          maxLength: 100
+          example: jane.updated@example.com
+          nullable: true
+        phone:
+          type: string
+          pattern: '^[0-9]{10,15}$'
+          example: "08987654321"
+          nullable: true
+        vehicle_number:
+          type: string
+          maxLength: 20
+          example: XYZ789
+          nullable: true
+        latitude:
+          type: number
+          format: float
+          example: -6.12445678
+          nullable: true
+        longitude:
+          type: number
+          format: float
+          example: 106.12445678
+          nullable: true
+        status:
+          type: string
+          enum: [active, inactive]
+          example: active
+          nullable: true
+
+    UpdateDriverLocationRequest:
+      type: object
+      required:
+        - latitude
+        - longitude
+      properties:
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+
+    DriverLocationResponse:
+      type: object
+      properties:
+        driverId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jane Driver
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+        lastUpdated:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    # Menu Item Schemas
+    MenuItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        storeId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Pizza
+        description:
+          type: string
+          example: Classic Margherita
+          nullable: true
+        price:
+          type: number
+          format: float
+          example: 10.99
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/menu/pizza.jpg
+          nullable: true
+        category:
+          type: string
+          example: Main Course
+          nullable: true
+        isAvailable:
+          type: boolean
+          example: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    MenuItemListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 30
+        totalPages:
+          type: integer
+          example: 3
+        currentPage:
+          type: integer
+          example: 1
+        menuItems:
+          type: array
+          items:
+            $ref: '#/components/schemas/MenuItem'
+
+    CreateMenuItemRequest:
+      type: object
+      required:
+        - storeId
+        - name
+        - price
+      properties:
+        storeId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          maxLength: 100
+          example: Pizza
+        description:
+          type: string
+          maxLength: 500
+          example: Classic Margherita
+          nullable: true
+        price:
+          type: number
+          format: float
+          example: 10.99
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+        category:
+          type: string
+          maxLength: 50
+          example: Main Course
+          nullable: true
+        isAvailable:
+          type: boolean
+          example: true
+          default: true
+
+    UpdateMenuItemRequest:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+          example: Pizza Updated
+          nullable: true
+        description:
+          type: string
+          maxLength: 500
+          example: Updated Margherita
+          nullable: true
+        price:
+          type: number
+          format: float
+          example: 11.99
+          nullable: true
+        image:
+          type: string
+          description: Base64 encoded image
+          example: data:image/jpeg;base64,/9j/4AAQSkZJRgABAQ...
+          nullable: true
+        category:
+          type: string
+          maxLength: 50
+          example: Main Course
+          nullable: true
+        isAvailable:
+          type: boolean
+          example: true
+          nullable: true
+
+    # Order Schemas
+    Order:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        deliveryAddress:
+          type: string
+          example: 123 Customer Street
+        subtotal:
+          type: number
+          format: float
+          example: 10.99
+        serviceCharge:
+          type: number
+          format: float
+          example: 2.00
+        total:
+          type: number
+          format: float
+          example: 12.99
+        order_status:
+          type: string
+          enum: [pending, approved, preparing, on_delivery, delivered, cancelled]
+          example: pending
+        delivery_status:
+          type: string
+          enum: [waiting, picking_up, on_delivery, delivered]
+          example: waiting
+          nullable: true
+        orderDate:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        notes:
+          type: string
+          example: Please deliver quickly
+          nullable: true
+        customerId:
+          type: integer
+          example: 1
+        driverId:
+          type: integer
+          example: 1
+          nullable: true
+        storeId:
+          type: integer
+          example: 1
+        estimatedDeliveryTime:
+          type: string
+          format: date-time
+          example: "2025-04-29T10:00:00.000Z"
+          nullable: true
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/OrderItem'
+        store:
+          $ref: '#/components/schemas/Store'
+          nullable: true
+        customer:
+          $ref: '#/components/schemas/User'
+          nullable: true
+        driver:
+          $ref: '#/components/schemas/User'
+          nullable: true
+
+    OrderItem:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        orderId:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Pizza
+        price:
+          type: number
+          format: float
+          example: 10.99
+        quantity:
+          type: integer
+          example: 1
+        imageUrl:
+          type: string
+          format: uri
+          example: https://example.com/menu/pizza.jpg
+          nullable: true
+        status:
+          type: string
+          example: confirmed
+          nullable: true
+
+    OrderListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 15
+        totalPages:
+          type: integer
+          example: 2
+        currentPage:
+          type: integer
+          example: 1
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+
+    DriverOrdersResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 10
+        totalPages:
+          type: integer
+          example: 1
+        currentPage:
+          type: integer
+          example: 1
+        orders:
+          type: array
+          items:
+            $ref: '#/components/schemas/Order'
+
+    CreateOrderRequest:
+      type: object
+      required:
+        - storeId
+        - deliveryAddress
+        - items
+      properties:
+        notes:
+          type: string
+          maxLength: 500
+          example: Please deliver quickly
+          nullable: true
+        storeId:
+          type: integer
+          example: 1
+        deliveryAddress:
+          type: string
+          maxLength: 200
+          example: 123 Customer Street
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/CreateOrderItemRequest'
+
+    CreateOrderItemRequest:
+      type: object
+      required:
+        - id
+        - quantity
+      properties:
+        id:
+          type: integer
+          example: 1
+          description: Menu item ID
+        quantity:
+          type: integer
+          minimum: 1
+          example: 1
+
+    ProcessOrderRequest:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum: [approve, reject]
+          example: approve
+        rejectionReason:
+          type: string
+          maxLength: 500
+          example: Out of stock
+          nullable: true
+
+    UpdateOrderStatusRequest:
+      type: object
+      required:
+        - id
+        - status
+      properties:
+        id:
+          type: integer
+          example: 1
+          description: Order ID
+        status:
+          type: string
+          enum: [pending, approved, preparing, on_delivery, delivered, cancelled]
+          example: delivered
+
+    # Review Schemas
+    Review:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        orderId:
+          type: integer
+          example: 1
+        userId:
+          type: integer
+          example: 1
+        storeId:
+          type: integer
+          example: 1
+          nullable: true
+        driverId:
+          type: integer
+          example: 1
+          nullable: true
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          maxLength: 500
+          example: Great service!
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    CreateReviewRequest:
+      type: object
+      required:
+        - orderId
+        - rating
+      properties:
+        orderId:
+          type: integer
+          example: 1
+        storeId:
+          type: integer
+          example: 1
+          nullable: true
+        driverId:
+          type: integer
+          example: 1
+          nullable: true
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 5
+        comment:
+          type: string
+          maxLength: 500
+          example: Great service!
+          nullable: true
+
+    # Tracking Schemas
+    TrackingInfo:
+      type: object
+      properties:
+        orderId:
+          type: integer
+          example: 1
+        status:
+          type: string
+          enum: [preparing, on_the_way, delivered]
+          example: on_the_way
+        storeLocation:
+          $ref: '#/components/schemas/Location'
+          nullable: true
+        driverLocation:
+          $ref: '#/components/schemas/Location'
+          nullable: true
+        deliveryAddress:
+          type: string
+          example: 123 Customer Street
+        estimatedDeliveryTime:
+          type: string
+          format: date-time
+          example: "2025-04-29T10:00:00.000Z"
+          nullable: true
+        driver:
+          $ref: '#/components/schemas/DriverTrackingInfo'
+          nullable: true
+
+    Location:
+      type: object
+      properties:
+        latitude:
+          type: number
+          format: float
+          example: -6.12345678
+        longitude:
+          type: number
+          format: float
+          example: 106.12345678
+
+    DriverTrackingInfo:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: Jane Driver
+        phone:
+          type: string
+          example: "08123456789"
+          nullable: true
+        vehicleType:
+          type: string
+          example: Motorcycle
+          nullable: true
+        vehicleNumber:
+          type: string
+          example: ABC123
+          nullable: true
+        rating:
+          type: number
+          format: float
+          example: 4.8
+          nullable: true
+
+    # Driver Request Schemas
+    DriverRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        orderId:
+          type: integer
+          example: 1
+        driverId:
+          type: integer
+          example: 1
+        status:
+          type: string
+          enum: [pending, accepted, rejected, expired]
+          example: pending
+        createdAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+        updatedAt:
+          type: string
+          format: date-time
+          example: "2025-04-29T09:16:52.000Z"
+
+    DriverRequestListResponse:
+      type: object
+      properties:
+        totalItems:
+          type: integer
+          example: 10
+        totalPages:
+          type: integer
+          example: 1
+        currentPage:
+          type: integer
+          example: 1
+        requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/DriverRequest'
+
+    DriverRequestDetail:
+      type: object
+      properties:
+        request:
+          $ref: '#/components/schemas/DriverRequest'
+        order:
+          $ref: '#/components/schemas/Order'
+        store:
+          $ref: '#/components/schemas/Store'
+        customer:
+          $ref: '#/components/schemas/User'
+
+    RespondToRequest:
+      type: object
+      required:
+        - action
+      properties:
+        action:
+          type: string
+          enum: [accept, reject]
+          example: accept
+
+    # Profile Response Schemas
+    LoginResponseCustomer:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+
+    LoginResponseDriver:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+        driver:
+          $ref: '#/components/schemas/Driver'
+
+    LoginResponseOwner:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+        store:
+          $ref: '#/components/schemas/Store'
+
+    LoginResponseAdmin:
+      type: object
+      properties:
+        token:
+          type: string
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        user:
+          $ref: '#/components/schemas/User'
+
+    ProfileResponseCustomer:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+
+    ProfileResponseDriver:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        driver:
+          $ref: '#/components/schemas/Driver'
+
+    ProfileResponseOwner:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        store:
+          $ref: '#/components/schemas/Store'
+
+    ProfileResponseAdmin:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        driver:
+          $ref: '#/components/schemas/Driver'
+          nullable: true
+        store:
+          $ref: '#/components/schemas/Store'
+          nullable: true
