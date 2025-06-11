@@ -4,6 +4,70 @@ const logger = require('../utils/logger');
 const { getQueryOptions } = require('../utils/queryHelper');
 const { Op } = require('sequelize');
 
+// Function to handle request timeouts
+const handleRequestTimeout = async (driverRequest) => {
+    try {
+        // Update the expired request
+        await driverRequest.update({ status: 'expired' });
+
+        // Find other available drivers
+        const availableDrivers = await Driver.findAll({
+            where: {
+                status: 'active',
+                id: { [Op.ne]: driverRequest.driverId }
+            }
+        });
+
+        if (availableDrivers.length > 0) {
+            // Create new requests for other drivers
+            const newRequests = availableDrivers.map(driver => ({
+                orderId: driverRequest.orderId,
+                driverId: driver.id,
+                status: 'pending'
+            }));
+
+            await DriverRequest.bulkCreate(newRequests);
+            logger.info(`Reassigned order ${driverRequest.orderId} to ${newRequests.length} new drivers`);
+        } else {
+            // If no drivers available, mark order as failed
+            await Order.update(
+                { order_status: 'cancelled', cancellationReason: 'No available drivers' },
+                { where: { id: driverRequest.orderId } }
+            );
+            logger.info(`Order ${driverRequest.orderId} marked as failed - no available drivers`);
+        }
+    } catch (error) {
+        logger.error('Error handling request timeout:', error);
+    }
+};
+
+// Function to check for expired requests
+const checkExpiredRequests = async () => {
+    try {
+        const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+
+        const expiredRequests = await DriverRequest.findAll({
+            where: {
+                status: 'pending',
+                createdAt: { [Op.lt]: fifteenMinutesAgo }
+            },
+            include: [{
+                model: Order,
+                as: 'order'
+            }]
+        });
+
+        for (const request of expiredRequests) {
+            await handleRequestTimeout(request);
+        }
+    } catch (error) {
+        logger.error('Error checking expired requests:', error);
+    }
+};
+
+// Run the check every minute
+setInterval(checkExpiredRequests, 60 * 1000);
+
 const getDriverRequests = async (req, res) => {
     try {
         const queryOptions = getQueryOptions(req.query);
@@ -32,7 +96,7 @@ const getDriverRequests = async (req, res) => {
                 include: [
                     {
                         model: User,
-                        as: 'customer', // Assuming you have a user association in Order
+                        as: 'customer',
                         attributes: ['id', 'name', 'phone']
                     }
                 ]
@@ -144,8 +208,7 @@ const getDriverRequestDetail = async (req, res) => {
  */
 const respondToDriverRequest = async (req, res) => {
     try {
-        const userId = req.user.id; // Get the logged-in driver's ID from the token
-
+        const userId = req.user.id;
         const driver = await Driver.findOne({
             where: { userId }
         });
@@ -159,9 +222,8 @@ const respondToDriverRequest = async (req, res) => {
 
         const driverId = driver.id;
         const { requestId } = req.params;
-        const { action } = req.body; // 'accept' atau 'reject'
+        const { action } = req.body;
 
-        // Validasi input
         if (!['accept', 'reject'].includes(action)) {
             return response(res, {
                 statusCode: 400,
@@ -169,7 +231,6 @@ const respondToDriverRequest = async (req, res) => {
             });
         }
 
-        // Cari permintaan pengantaran
         const driverRequest = await DriverRequest.findOne({
             where: {
                 id: requestId,
@@ -188,7 +249,6 @@ const respondToDriverRequest = async (req, res) => {
             });
         }
 
-        // Jika request sudah diproses sebelumnya
         if (driverRequest.status !== 'pending') {
             return response(res, {
                 statusCode: 400,
@@ -196,13 +256,11 @@ const respondToDriverRequest = async (req, res) => {
             });
         }
 
-        // Update status permintaan berdasarkan action
         const newStatus = action === 'accept' ? 'accepted' : 'rejected';
         await driverRequest.update({ status: newStatus });
 
-        // Jika diterima, update order
         if (action === 'accept') {
-            // Pastikan order belum diambil driver lain
+            // Check if order is already taken
             const existingAcceptedRequest = await DriverRequest.findOne({
                 where: {
                     id: { [Op.ne]: driverRequest.id },
@@ -212,7 +270,6 @@ const respondToDriverRequest = async (req, res) => {
             });
 
             if (existingAcceptedRequest) {
-                // Rollback our acceptance
                 await driverRequest.update({ status: 'pending' });
                 return response(res, {
                     statusCode: 400,
@@ -220,7 +277,10 @@ const respondToDriverRequest = async (req, res) => {
                 });
             }
 
-            // Update status order
+            // Update driver status to busy
+            await driver.update({ status: 'busy' });
+
+            // Update order status
             await Order.update(
                 {
                     driverId,
@@ -229,7 +289,7 @@ const respondToDriverRequest = async (req, res) => {
                 { where: { id: driverRequest.orderId } }
             );
 
-            // Update semua request lain untuk order ini menjadi expired
+            // Update other requests to expired
             await DriverRequest.update(
                 { status: 'expired' },
                 {
@@ -242,7 +302,6 @@ const respondToDriverRequest = async (req, res) => {
             );
         }
 
-        // Get updated request with relations
         const updatedRequest = await DriverRequest.findOne({
             where: { id: driverRequest.id },
             include: [
@@ -262,17 +321,15 @@ const respondToDriverRequest = async (req, res) => {
 
         return response(res, {
             statusCode: 200,
-            message: action === 'accept'
-                ? 'Permintaan pengantaran berhasil disetujui'
-                : 'Permintaan pengantaran berhasil ditolak',
+            message: `Permintaan pengantaran berhasil di-${action}`,
             data: updatedRequest
         });
     } catch (error) {
-        logger.error('Gagal merespon permintaan pengantaran:', error);
+        logger.error('Error in respondToDriverRequest:', error);
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memproses permintaan pengantaran',
-            error: error.message,
+            errors: error.message
         });
     }
 };

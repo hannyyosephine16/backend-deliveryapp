@@ -21,7 +21,12 @@ const router = express.Router();
 
 // Store routes
 router.put('/update', verifyToken, updateProfileStore);
-router.patch( '/:id/status',verifyToken,isOwner,updateStoreStatus);
+router.patch(
+    '/:id/status',
+    verifyToken,
+    isOwner,
+    updateStoreStatus
+);
 router.get('/', getAllStores); // Semua role
 router.get('/:id', getStoreById); // Semua role
 router.post('/', verifyToken, isAdmin, createStoreValidator, validate, createStore); // Hanya admin

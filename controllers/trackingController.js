@@ -215,6 +215,9 @@ const completeDelivery = async (req, res) => {
             { where: { orderId: id, driverId, status: 'accepted' } }
         );
 
+        // Set driver status back to active
+        await driver.update({ status: 'active' });
+
         // Ambil data order yang telah diperbarui
         const updatedOrder = await Order.findByPk(id, {
             include: [
@@ -225,15 +228,11 @@ const completeDelivery = async (req, res) => {
 
         return response(res, {
             statusCode: 200,
-            message: 'Pengantaran selesai',
-            data: {
-                orderId: updatedOrder.id,
-                status: updatedOrder.order_status,
-                deliveredAt: updatedOrder.delivered_at
-            }
+            message: 'Pengantaran berhasil diselesaikan',
+            data: updatedOrder
         });
     } catch (error) {
-        logger.error(error);
+        logger.error('Error completing delivery:', error);
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menyelesaikan pengantaran',

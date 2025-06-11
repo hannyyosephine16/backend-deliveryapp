@@ -1,16 +1,90 @@
-const Bull = require('bull');
+const Queue = require('bull');
+const logger = require('./logger').logger;
 
-const orderQueue = new Bull('order-queue', {
-    redis: {
-        host: '127.0.0.1',
-        port: 6379,
-        password: '1ee5e566'
-    },
-    settings: {
-        stalledInterval: 30000, // Memeriksa stalled job setiap 30 detik
-        maxStalledCount: 2,     // Job dianggap failed setelah 2x stalled
-        retryProcessDelay: 5000 // Delay sebelum retry proses yang failed
+// Create queues
+const orderQueue = new Queue('order-processing', process.env.REDIS_URL || 'redis://localhost:6379');
+const driverQueue = new Queue('driver-assignment', process.env.REDIS_URL || 'redis://localhost:6379');
+
+// Process order queue
+orderQueue.process(async (job) => {
+    const { orderId, action } = job.data;
+    logger.info(`Processing order ${orderId}: ${action}`);
+
+    try {
+        switch (action) {
+            case 'find-driver':
+                // Logic to find available drivers
+                break;
+            case 'check-status':
+                // Logic to check order status
+                break;
+            case 'cleanup':
+                // Logic to cleanup expired orders
+                break;
+            default:
+                logger.warn(`Unknown order action: ${action}`);
+        }
+    } catch (error) {
+        logger.error(`Error processing order ${orderId}:`, error);
+        throw error;
     }
 });
 
-module.exports = orderQueue;
+// Process driver queue
+driverQueue.process(async (job) => {
+    const { driverId, action } = job.data;
+    logger.info(`Processing driver ${driverId}: ${action}`);
+
+    try {
+        switch (action) {
+            case 'check-availability':
+                // Logic to check driver availability
+                break;
+            case 'update-location':
+                // Logic to update driver location
+                break;
+            default:
+                logger.warn(`Unknown driver action: ${action}`);
+        }
+    } catch (error) {
+        logger.error(`Error processing driver ${driverId}:`, error);
+        throw error;
+    }
+});
+
+// Error handling
+orderQueue.on('error', (error) => {
+    logger.error('Order queue error:', error);
+});
+
+driverQueue.on('error', (error) => {
+    logger.error('Driver queue error:', error);
+});
+
+// Queue management functions
+const queueManager = {
+    // Add order job
+    async addOrderJob(orderId, action, options = {}) {
+        return orderQueue.add({ orderId, action }, options);
+    },
+
+    // Add driver job
+    async addDriverJob(driverId, action, options = {}) {
+        return driverQueue.add({ driverId, action }, options);
+    },
+
+    // Get queue status
+    async getQueueStatus() {
+        const [orderStatus, driverStatus] = await Promise.all([
+            orderQueue.getJobCounts(),
+            driverQueue.getJobCounts()
+        ]);
+
+        return {
+            order: orderStatus,
+            driver: driverStatus
+        };
+    }
+};
+
+module.exports = queueManager;
