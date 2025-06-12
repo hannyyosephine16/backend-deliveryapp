@@ -1,12 +1,13 @@
 const { DriverRequest, Driver, DriverReview, Order, User, Store, OrderItem } = require('../models');
 const response = require('../utils/response');
-const logger = require('../utils/logger');
+const { logger } = require('../utils/logger');
 const { getQueryOptions } = require('../utils/queryHelper');
 const { Op } = require('sequelize');
 
 // Function to handle request timeouts
 const handleRequestTimeout = async (driverRequest) => {
     try {
+        logger.info('Handling request timeout:', { requestId: driverRequest.id, orderId: driverRequest.orderId });
         // Update the expired request
         await driverRequest.update({ status: 'expired' });
 
@@ -37,13 +38,14 @@ const handleRequestTimeout = async (driverRequest) => {
             logger.info(`Order ${driverRequest.orderId} marked as failed - no available drivers`);
         }
     } catch (error) {
-        logger.error('Error handling request timeout:', error);
+        logger.error('Error handling request timeout:', { error: error.message, stack: error.stack });
     }
 };
 
 // Function to check for expired requests
 const checkExpiredRequests = async () => {
     try {
+        logger.info('Checking for expired requests');
         const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
         const expiredRequests = await DriverRequest.findAll({
@@ -57,11 +59,12 @@ const checkExpiredRequests = async () => {
             }]
         });
 
+        logger.info(`Found ${expiredRequests.length} expired requests`);
         for (const request of expiredRequests) {
             await handleRequestTimeout(request);
         }
     } catch (error) {
-        logger.error('Error checking expired requests:', error);
+        logger.error('Error checking expired requests:', { error: error.message, stack: error.stack });
     }
 };
 
@@ -70,15 +73,17 @@ setInterval(checkExpiredRequests, 60 * 1000);
 
 const getDriverRequests = async (req, res) => {
     try {
+        logger.info('Get driver requests request:', { userId: req.user.id });
         const queryOptions = getQueryOptions(req.query);
 
-        const userId = req.user.id; // Get the logged-in driver's ID from the token
+        const userId = req.user.id;
 
         const driver = await Driver.findOne({
             where: { userId }
         });
 
         if (!driver) {
+            logger.warn('Driver not found:', { userId });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan'
@@ -107,6 +112,7 @@ const getDriverRequests = async (req, res) => {
 
         const { count, rows: requests } = await DriverRequest.findAndCountAll(queryOptions);
 
+        logger.info('Successfully retrieved driver requests:', { driverId, count });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan permintaan pengantaran',
@@ -118,7 +124,7 @@ const getDriverRequests = async (req, res) => {
             }
         });
     } catch (error) {
-        logger.error('Gagal mendapatkan permintaan pengantaran:', error);
+        logger.error('Error getting driver requests:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Gagal mendapatkan permintaan pengantaran',
@@ -132,13 +138,15 @@ const getDriverRequests = async (req, res) => {
  */
 const getDriverRequestDetail = async (req, res) => {
     try {
-        const userId = req.user.id; // Get the logged-in driver's ID from the token
+        logger.info('Get driver request detail request:', { userId: req.user.id, requestId: req.params.requestId });
+        const userId = req.user.id;
 
         const driver = await Driver.findOne({
             where: { userId }
         });
 
         if (!driver) {
+            logger.warn('Driver not found:', { userId });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan'
@@ -182,19 +190,21 @@ const getDriverRequestDetail = async (req, res) => {
         });
 
         if (!driverRequest) {
+            logger.warn('Driver request not found:', { requestId, driverId });
             return response(res, {
                 statusCode: 404,
                 message: 'Permintaan pengantaran tidak ditemukan'
             });
         }
 
+        logger.info('Successfully retrieved driver request detail:', { requestId });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan detail permintaan pengantaran',
             data: driverRequest
         });
     } catch (error) {
-        logger.error('Gagal mendapatkan detail permintaan pengantaran:', error);
+        logger.error('Error getting driver request detail:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Gagal mendapatkan detail permintaan pengantaran',
@@ -208,12 +218,14 @@ const getDriverRequestDetail = async (req, res) => {
  */
 const respondToDriverRequest = async (req, res) => {
     try {
+        logger.info('Respond to driver request:', { userId: req.user.id, requestId: req.params.requestId, action: req.body.action });
         const userId = req.user.id;
         const driver = await Driver.findOne({
             where: { userId }
         });
 
         if (!driver) {
+            logger.warn('Driver not found:', { userId });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan'
@@ -225,6 +237,7 @@ const respondToDriverRequest = async (req, res) => {
         const { action } = req.body;
 
         if (!['accept', 'reject'].includes(action)) {
+            logger.warn('Invalid action:', { action });
             return response(res, {
                 statusCode: 400,
                 message: 'Action harus berupa "accept" atau "reject"'
@@ -243,6 +256,7 @@ const respondToDriverRequest = async (req, res) => {
         });
 
         if (!driverRequest) {
+            logger.warn('Driver request not found:', { requestId, driverId });
             return response(res, {
                 statusCode: 404,
                 message: 'Permintaan pengantaran tidak ditemukan'
@@ -319,17 +333,18 @@ const respondToDriverRequest = async (req, res) => {
             ]
         });
 
+        logger.info('Successfully responded to driver request:', { requestId, action });
         return response(res, {
             statusCode: 200,
-            message: `Permintaan pengantaran berhasil di-${action}`,
+            message: `Permintaan pengantaran berhasil ${action === 'accept' ? 'diterima' : 'ditolak'}`,
             data: updatedRequest
         });
     } catch (error) {
-        logger.error('Error in respondToDriverRequest:', error);
+        logger.error('Error responding to driver request:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat memproses permintaan pengantaran',
-            errors: error.message
+            message: 'Terjadi kesalahan saat merespon permintaan pengantaran',
+            error: error.message
         });
     }
 };

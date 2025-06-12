@@ -1,36 +1,31 @@
-const orderQueue = require('./utils/queue');
-const logger = require('./utils/logger');
+require('dotenv').config();
+const { orderQueue } = require('./utils/queue');
+const { logger } = require('./utils/logger');
+const { findDriverInBackground, cleanupQueue } = require('./controllers/orderController');
 
-// Delay require controller setelah queue dibuat
-process.nextTick(async () => {
-    const { findDriverInBackground, cleanupQueue } = require('./controllers/orderController');
+// Process order queue jobs
+orderQueue.process('find-driver', async (job) => {
+    const { orderId, storeId } = job.data;
+    logger.info(`Memproses order ${orderId} untuk store ${storeId}`);
 
-    orderQueue.process('find-driver', async (job) => {
-        logger.info(`Memproses order ${job.data.orderId} untuk store ${job.data.storeId}`);
-        try {
-            await findDriverInBackground(job.data.storeId, job.data.orderId);
-
-            // Setelah selesai, hapus job dari queue
-            await job.remove();
-            logger.info(`Job untuk order ${job.data.orderId} dihapus dari queue`);
-        } catch (error) {
-            logger.error(`Error processing job for order ${job.data.orderId}:`, error);
-
-            // Jika ada error, tetap hapus job untuk mencegah pengulangan
-            await job.remove();
-            await cleanupQueue(job.data.orderId);
-        }
-    });
-
-    // Handle job completion
-    orderQueue.on('completed', (job) => {
-        logger.info(`Job ${job.id} untuk order ${job.data.orderId} selesai`);
-        job.remove();
-    });
-
-    // Handle job failure
-    orderQueue.on('failed', (job, err) => {
-        logger.error(`Job ${job.id} untuk order ${job.data.orderId} gagal:`, err);
-        job.remove();
-    });
+    try {
+        await findDriverInBackground(storeId, orderId);
+        logger.info(`Job untuk order ${orderId} selesai`);
+    } catch (error) {
+        logger.error(`Error processing job for order ${orderId}:`, error);
+        await cleanupQueue(orderId);
+        throw error;
+    }
 });
+
+// Handle job completion
+orderQueue.on('completed', (job) => {
+    logger.info(`Job ${job.id} untuk order ${job.data.orderId} selesai`);
+});
+
+// Handle job failure
+orderQueue.on('failed', (job, err) => {
+    logger.error(`Job ${job.id} untuk order ${job.data.orderId} gagal:`, err);
+});
+
+logger.info('Worker started successfully');

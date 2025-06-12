@@ -2,8 +2,8 @@ const { Order, OrderItem, Store, User, Driver, DriverRequest, DriverReview, Orde
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const euclideanDistance = require('../utils/euclideanDistance');
-const logger = require('../utils/logger');
-const orderQueue = require('../utils/queue');
+const { logger } = require('../utils/logger');
+const { orderQueue } = require('../utils/queue');
 const { Op } = require('sequelize');
 
 // Fungsi untuk membatalkan order
@@ -516,84 +516,29 @@ const getOrderDetail = async (req, res) => {
  */
 const updateOrderStatus = async (req, res) => {
     try {
-        const { id, status } = req.body;
-        const { role } = req.user;
+        logger.info('Update order status request:', { orderId: req.params.id, status: req.body.status });
+        const { id } = req.params;
+        const { status } = req.body;
 
-        // Validasi status order sesuai enum
-        const validStatuses = ['pending', 'approved', 'preparing', 'on_delivery', 'delivered', 'cancelled'];
-        if (!validStatuses.includes(status)) {
-            return response(res, {
-                statusCode: 400,
-                message: `Status tidak valid. Status yang diperbolehkan: ${validStatuses.join(', ')}`
-            });
-        }
-
-        const order = await Order.findByPk(id, {
-            include: [
-                { model: User, as: 'customer' },
-                { model: Driver, as: 'driver' },
-                { model: Store, as: 'store' }
-            ]
-        });
-
+        const order = await Order.findByPk(id);
         if (!order) {
+            logger.warn('Order not found for status update:', { orderId: id });
             return response(res, { statusCode: 404, message: 'Order tidak ditemukan' });
         }
 
-        // Validasi transisi status berdasarkan role
-        const allowedTransitions = {
-            store: {
-                from: 'pending',
-                to: ['approved', 'preparing', 'cancelled']
-            },
-            driver: {
-                from: 'preparing',
-                to: ['on_delivery', 'delivered']
-            },
-            admin: {
-                from: '*',
-                to: validStatuses
-            }
-        };
+        await order.update({ status });
 
-        const roleRules = allowedTransitions[role] || {};
-        const currentStatus = order.order_status;
-
-        // Admin bisa mengubah ke status apapun
-        if (role !== 'admin') {
-            // Validasi apakah transisi status diperbolehkan
-            if (roleRules.from !== '*' && currentStatus !== roleRules.from) {
-                return response(res, {
-                    statusCode: 400,
-                    message: `Tidak bisa mengubah status dari ${currentStatus} ke ${status} untuk role ${role}`
-                });
-            }
-
-            if (!roleRules.to.includes(status)) {
-                return response(res, {
-                    statusCode: 403,
-                    message: `Role ${role} tidak diizinkan mengubah status ke ${status}`
-                });
-            }
-        }
-
-        // Update status
-        await order.update({ order_status: status });
-
-        // Log perubahan status
-        logger.info(`Order ${order.code} status changed from ${currentStatus} to ${status} by ${role}`);
-
+        logger.info('Order status updated successfully:', { orderId: order.id, status });
         return response(res, {
             statusCode: 200,
-            message: 'Status order berhasil diperbarui',
-            data: order
+            message: 'Status order berhasil diupdate',
+            data: order,
         });
-
     } catch (error) {
-        logger.error('Error updating order status:', error);
+        logger.error('Error updating order status:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat memperbarui status order',
+            message: 'Terjadi kesalahan saat mengupdate status order',
             errors: error.message,
         });
     }

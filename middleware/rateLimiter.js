@@ -1,13 +1,18 @@
 const rateLimit = require('express-rate-limit');
-const RedisStore = require('rate-limit-redis');
+const { RedisStore } = require('rate-limit-redis');
 const Redis = require('ioredis');
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const redis = new Redis({
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || 'localhost',
+    password: process.env.REDIS_PASSWORD,
+    tls: process.env.REDIS_TLS === 'true' ? {} : undefined
+});
 
 // General API rate limiter
 const apiLimiter = rateLimit({
     store: new RedisStore({
-        client: redis,
+        sendCommand: (...args) => redis.call(...args),
         prefix: 'rl:api:'
     }),
     windowMs: 15 * 60 * 1000, // 15 minutes
@@ -21,7 +26,7 @@ const apiLimiter = rateLimit({
 // Stricter limiter for authentication endpoints
 const authLimiter = rateLimit({
     store: new RedisStore({
-        client: redis,
+        sendCommand: (...args) => redis.call(...args),
         prefix: 'rl:auth:'
     }),
     windowMs: 60 * 60 * 1000, // 1 hour
@@ -35,7 +40,7 @@ const authLimiter = rateLimit({
 // Driver request limiter
 const driverRequestLimiter = rateLimit({
     store: new RedisStore({
-        client: redis,
+        sendCommand: (...args) => redis.call(...args),
         prefix: 'rl:driver:'
     }),
     windowMs: 60 * 1000, // 1 minute

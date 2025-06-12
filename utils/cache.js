@@ -1,7 +1,12 @@
 const Redis = require('ioredis');
 const logger = require('./logger').logger;
 
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379');
+const redis = new Redis({
+    port: process.env.REDIS_PORT || 6379,
+    host: process.env.REDIS_HOST || 'localhost',
+    password: process.env.REDIS_PASSWORD,
+    tls: process.env.REDIS_TLS === 'true' ? {} : undefined
+});
 
 redis.on('error', (err) => {
     logger.error('Redis connection error:', err);

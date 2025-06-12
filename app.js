@@ -24,16 +24,11 @@ app.use('/api/stores', cache.middleware(300)); // Cache store data for 5 minutes
 app.use('/api/menu', cache.middleware(300)); // Cache menu data for 5 minutes
 
 // Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/users', require('./routes/users'));
-app.use('/api/stores', require('./routes/stores'));
-app.use('/api/orders', require('./routes/orders'));
-app.use('/api/drivers', require('./routes/drivers'));
-app.use('/api/tracking', require('./routes/tracking'));
+app.use('/api/v1', require('./routes'));
 
 // Error handling
 app.use(errorLogger);
-app.use((err, req, res) => {
+app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({
         statusCode: 500,

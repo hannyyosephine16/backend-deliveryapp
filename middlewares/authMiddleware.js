@@ -1,8 +1,8 @@
+require('dotenv').config();
 const jwt = require('jsonwebtoken');
+const { User } = require('../models');
 const logger = require('../utils/logger');
 const response = require('../utils/response');
-const dotenv = require('dotenv');
-dotenv.config();
 
 /**
  * Middleware untuk memverifikasi token JWT

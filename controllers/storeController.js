@@ -4,6 +4,7 @@ const response = require('../utils/response');
 const haversine = require('../utils/haversine');
 const bcrypt = require('bcryptjs');
 const { saveBase64Image } = require('../utils/imageHelper');
+const { logger } = require('../utils/logger');
 
 
 /**
@@ -13,10 +14,12 @@ const { saveBase64Image } = require('../utils/imageHelper');
  */
 const getAllStores = async (req, res) => {
     try {
+        logger.info('Get all stores request');
         const queryOptions = getQueryOptions(req.query, [{ model: User, as: 'user' }]);
 
         const { count, rows: stores } = await Store.findAndCountAll(queryOptions);
 
+        logger.info('Successfully retrieved stores', { count });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data store',
@@ -28,6 +31,7 @@ const getAllStores = async (req, res) => {
             },
         });
     } catch (error) {
+        logger.error('Error getting stores:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data store',
@@ -43,23 +47,27 @@ const getAllStores = async (req, res) => {
  */
 const getStoreById = async (req, res) => {
     try {
+        logger.info('Get store by ID request:', { storeId: req.params.id });
         const store = await Store.findByPk(req.params.id, {
             include: [{ model: User, as: 'user' }], // Include data User (owner)
         });
 
         if (!store) {
+            logger.warn('Store not found:', { storeId: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Store tidak ditemukan',
             });
         }
 
+        logger.info('Successfully retrieved store:', { storeId: store.id });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data store',
             data: store,
         });
     } catch (error) {
+        logger.error('Error getting store by ID:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data store',
@@ -75,6 +83,7 @@ const getStoreById = async (req, res) => {
  */
 const createStore = async (req, res) => {
     try {
+        logger.info('Create store request:', { email: req.body.email, storeName: req.body.storeName });
         const { name, email, password, phone, storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -113,6 +122,7 @@ const createStore = async (req, res) => {
             distance, // Simpan jarak ke database
         });
 
+        logger.info('Store created successfully:', { storeId: store.id, ownerId: owner.id });
         return response(res, {
             statusCode: 201,
             message: 'Store dan owner berhasil ditambahkan',
@@ -122,6 +132,7 @@ const createStore = async (req, res) => {
             },
         });
     } catch (error) {
+        logger.error('Error creating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menambahkan store dan owner',
@@ -137,6 +148,7 @@ const createStore = async (req, res) => {
  */
 const updateStore = async (req, res) => {
     try {
+        logger.info('Update store request:', { storeId: req.params.id });
         const { id } = req.params;
         const { name, email, password, phone, storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
 
@@ -145,6 +157,7 @@ const updateStore = async (req, res) => {
         });
 
         if (!store) {
+            logger.warn('Store not found for update:', { storeId: id });
             return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
         }
 
@@ -184,12 +197,14 @@ const updateStore = async (req, res) => {
             distance,
         });
 
+        logger.info('Store updated successfully:', { storeId: store.id });
         return response(res, {
             statusCode: 200,
             message: 'Store berhasil diupdate',
             data: store,
         });
     } catch (error) {
+        logger.error('Error updating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengupdate store',
@@ -205,10 +220,12 @@ const updateStore = async (req, res) => {
  */
 const deleteStore = async (req, res) => {
     try {
+        logger.info('Delete store request:', { storeId: req.params.id });
         const { id } = req.params;
 
         const store = await Store.findByPk(id);
         if (!store) {
+            logger.warn('Store not found for deletion:', { storeId: id });
             return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
         }
 
@@ -220,11 +237,13 @@ const deleteStore = async (req, res) => {
 
         await store.destroy();
 
+        logger.info('Store deleted successfully:', { storeId: id });
         return response(res, {
             statusCode: 200,
             message: 'Store dan owner berhasil dihapus',
         });
     } catch (error) {
+        logger.error('Error deleting store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menghapus store dan owner',
@@ -240,6 +259,7 @@ const deleteStore = async (req, res) => {
  */
 const updateProfileStore = async (req, res) => {
     try {
+        logger.info('Update store profile request:', { userId: req.user.id });
         const { id: userId } = req.user; // ID owner yang sedang login
         const { storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
 
@@ -248,7 +268,8 @@ const updateProfileStore = async (req, res) => {
             where: { userId },
         });
         if (!store) {
-            return response(res, { statusCode: 404, message: 'Store tidak ditemukan atau Anda bukan pemilik store ini' });
+            logger.warn('Store not found for profile update:', { userId });
+            return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
         }
 
         // Jika latitude atau longitude diubah, hitung ulang jarak
@@ -278,15 +299,17 @@ const updateProfileStore = async (req, res) => {
             distance,
         });
 
+        logger.info('Store profile updated successfully:', { storeId: store.id });
         return response(res, {
             statusCode: 200,
-            message: 'Store berhasil diupdate',
+            message: 'Profil store berhasil diupdate',
             data: store,
         });
     } catch (error) {
+        logger.error('Error updating store profile:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate store',
+            message: 'Terjadi kesalahan saat mengupdate profil store',
             errors: error.message,
         });
     }

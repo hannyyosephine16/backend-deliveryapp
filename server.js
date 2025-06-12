@@ -1,5 +1,4 @@
-const dotenv = require('dotenv');
-dotenv.config();
+require('dotenv').config();
 const http = require('http');
 const app = require('./app');
 const logger = require('./utils/logger');

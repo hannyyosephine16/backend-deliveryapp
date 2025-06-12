@@ -1,9 +1,25 @@
+require('dotenv').config();
 const Queue = require('bull');
-const logger = require('./logger').logger;
+const logger = require('./logger');
 
-// Create queues
-const orderQueue = new Queue('order-processing', process.env.REDIS_URL || 'redis://localhost:6379');
-const driverQueue = new Queue('driver-assignment', process.env.REDIS_URL || 'redis://localhost:6379');
+console.log(process.env.REDIS_PORT);
+console.log(process.env.REDIS_HOST);
+console.log(process.env.REDIS_PASSWORD);
+console.log(process.env.REDIS_TLS);
+
+// Redis connection options
+const redisConfig = {
+    redis: {
+        port: process.env.REDIS_PORT || 6379,
+        host: process.env.REDIS_HOST || 'localhost',
+        password: process.env.REDIS_PASSWORD,
+        tls: process.env.REDIS_TLS === 'true' ? {} : undefined
+    }
+};
+
+// Create queues with authentication
+const orderQueue = new Queue('order-processing', redisConfig);
+const driverQueue = new Queue('driver-assignment', redisConfig);
 
 // Process order queue
 orderQueue.process(async (job) => {
@@ -87,4 +103,8 @@ const queueManager = {
     }
 };
 
-module.exports = queueManager;
+module.exports = {
+    orderQueue,
+    driverQueue,
+    queueManager
+};

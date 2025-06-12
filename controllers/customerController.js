@@ -3,6 +3,7 @@ const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const bcrypt = require('bcryptjs');
 const { saveBase64Image } = require('../utils/imageHelper');
+const { logger } = require('../utils/logger');
 
 /**
  * Mendapatkan semua customer
@@ -11,6 +12,7 @@ const { saveBase64Image } = require('../utils/imageHelper');
  */
 const getAllCustomers = async (req, res) => {
     try {
+        logger.info('Get all customers request');
         const queryOptions = getQueryOptions(req.query);
 
         // Filter hanya untuk role 'customer'
@@ -18,6 +20,7 @@ const getAllCustomers = async (req, res) => {
 
         const { count, rows: customers } = await User.findAndCountAll(queryOptions);
 
+        logger.info('Successfully retrieved customers', { count });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data customer',
@@ -29,6 +32,7 @@ const getAllCustomers = async (req, res) => {
             },
         });
     } catch (error) {
+        logger.error('Error getting customers:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data customer',
@@ -44,6 +48,7 @@ const getAllCustomers = async (req, res) => {
  */
 const getCustomerById = async (req, res) => {
     try {
+        logger.info('Get customer by ID request:', { customerId: req.params.id });
         const customer = await User.findOne({
             where: {
                 id: req.params.id,
@@ -52,18 +57,21 @@ const getCustomerById = async (req, res) => {
         });
 
         if (!customer) {
+            logger.warn('Customer not found:', { customerId: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
             });
         }
 
+        logger.info('Successfully retrieved customer:', { customerId: customer.id });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data customer',
             data: customer,
         });
     } catch (error) {
+        logger.error('Error getting customer by ID:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data customer',
@@ -79,6 +87,7 @@ const getCustomerById = async (req, res) => {
  */
 const createCustomer = async (req, res) => {
     try {
+        logger.info('Create customer request:', { email: req.body.email });
         const { name, email, password, phone, image } = req.body;
 
         const hashedPassword = await bcrypt.hash(password, 10);
@@ -97,12 +106,14 @@ const createCustomer = async (req, res) => {
             avatar: imagePath
         });
 
+        logger.info('Customer created successfully:', { customerId: customer.id });
         return response(res, {
             statusCode: 201,
             message: 'Customer berhasil ditambahkan',
             data: customer,
         });
     } catch (error) {
+        logger.error('Error creating customer:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menambahkan customer',
@@ -118,6 +129,7 @@ const createCustomer = async (req, res) => {
  */
 const updateCustomer = async (req, res) => {
     try {
+        logger.info('Update customer request:', { customerId: req.params.id });
         const { id } = req.params;
         const { name, email, password, phone, image } = req.body;
 
@@ -129,6 +141,7 @@ const updateCustomer = async (req, res) => {
         });
 
         if (!customer) {
+            logger.warn('Customer not found for update:', { customerId: id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
@@ -152,12 +165,14 @@ const updateCustomer = async (req, res) => {
             avatar: imagePath
         });
 
+        logger.info('Customer updated successfully:', { customerId: customer.id });
         return response(res, {
             statusCode: 200,
             message: 'Customer berhasil diupdate',
             data: customer,
         });
     } catch (error) {
+        logger.error('Error updating customer:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengupdate customer',
@@ -173,6 +188,7 @@ const updateCustomer = async (req, res) => {
  */
 const deleteCustomer = async (req, res) => {
     try {
+        logger.info('Delete customer request:', { customerId: req.params.id });
         const { id } = req.params;
 
         const customer = await User.findOne({
@@ -183,6 +199,7 @@ const deleteCustomer = async (req, res) => {
         });
 
         if (!customer) {
+            logger.warn('Customer not found for deletion:', { customerId: id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
@@ -191,11 +208,13 @@ const deleteCustomer = async (req, res) => {
 
         await customer.destroy();
 
+        logger.info('Customer deleted successfully:', { customerId: id });
         return response(res, {
             statusCode: 200,
             message: 'Customer berhasil dihapus',
         });
     } catch (error) {
+        logger.error('Error deleting customer:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menghapus customer',

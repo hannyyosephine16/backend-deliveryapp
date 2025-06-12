@@ -1,9 +1,11 @@
+require('dotenv').config();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { User, Driver, Store } = require('../models');
 const nodemailer = require('nodemailer');
 const response = require('../utils/response');
 const { saveBase64Image } = require('../utils/imageHelper');
+const { logger } = require('../utils/logger');
 
 /**
  * Fungsi untuk menghasilkan token JWT
@@ -28,6 +30,7 @@ const resetTokens = {};
  */
 const login = async (req, res) => {
     try {
+        logger.info('Login attempt:', { email: req.body.email });
         const { email, password } = req.body;
         const user = await User.findOne({
             where: { email },
@@ -48,6 +51,7 @@ const login = async (req, res) => {
         });
 
         if (!user || !bcrypt.compareSync(password, user.password)) {
+            logger.warn('Login failed: Invalid credentials', { email });
             return response(res, { statusCode: 401, message: 'Email atau password salah' });
         }
 
@@ -64,12 +68,14 @@ const login = async (req, res) => {
             responseData.store = user.store;
         }
 
+        logger.info('Login successful', { userId: user.id, role: user.role });
         return response(res, {
             statusCode: 200,
             message: 'Login berhasil',
             data: responseData
         });
     } catch (error) {
+        logger.error('Login error:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat login',
@@ -85,18 +91,21 @@ const login = async (req, res) => {
  */
 const register = async (req, res) => {
     try {
+        logger.info('Registration attempt:', { email: req.body.email, role: req.body.role });
         const { name, email, phone, password, role } = req.body;
-        // const { name, email, phone, password } = req.body;
         const validRole = ['customer', 'store', 'driver', 'admin'];
         if (!validRole.includes(role)) {
+            logger.warn('Registration failed: Invalid role', { role });
             return response(res, { statusCode: 400, message: 'Role tidak valid' });
         }
         const userRole = validRole.includes(role) ? role : 'customer';
         const hashedPassword = bcrypt.hashSync(password, 10);
         const user = await User.create({ name, email, phone, password: hashedPassword, role: userRole });
 
+        logger.info('Registration successful', { userId: user.id, role: user.role });
         return response(res, { statusCode: 201, message: 'User berhasil didaftarkan', data: user });
     } catch (error) {
+        logger.error('Registration error:', { error: error.message, stack: error.stack });
         return response(res, { statusCode: 500, message: 'Terjadi kesalahan saat registrasi', errors: error.message });
     }
 };
@@ -108,6 +117,7 @@ const register = async (req, res) => {
  */
 const getProfile = async (req, res) => {
     try {
+        logger.info('Get profile request:', { userId: req.user.id, role: req.user.role });
         const userId = req.user.id;
         const userRole = req.user.role;
 
@@ -156,9 +166,11 @@ const getProfile = async (req, res) => {
         });
 
         if (!user) {
+            logger.warn('Profile not found:', { userId });
             return response(res, { statusCode: 404, message: 'User tidak ditemukan' });
         }
 
+        logger.info('Profile retrieved successfully', { userId });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan profil',
@@ -166,6 +178,7 @@ const getProfile = async (req, res) => {
         });
 
     } catch (error) {
+        logger.error('Get profile error:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil profil',
@@ -181,10 +194,12 @@ const getProfile = async (req, res) => {
  */
 const forgotPassword = async (req, res) => {
     try {
+        logger.info('Forgot password request:', { email: req.body.email });
         const { email } = req.body;
         const user = await User.findOne({ where: { email } });
 
         if (!user) {
+            logger.warn('Forgot password: Email not found', { email });
             return response(res, { statusCode: 404, message: 'Email tidak terdaftar' });
         }
 
@@ -207,8 +222,10 @@ const forgotPassword = async (req, res) => {
 
         await transporter.sendMail(mailOptions);
 
+        logger.info('Password reset email sent:', { userId: user.id });
         return response(res, { statusCode: 200, message: 'Email reset password telah dikirim' });
     } catch (error) {
+        logger.error('Forgot password error:', { error: error.message, stack: error.stack });
         return response(res, { statusCode: 500, message: 'Terjadi kesalahan', errors: error.message });
     }
 };
@@ -220,20 +237,24 @@ const forgotPassword = async (req, res) => {
  */
 const resetPassword = async (req, res) => {
     try {
+        logger.info('Reset password attempt');
         const { token, newPassword } = req.body;
         const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         if (!resetTokens[decoded.id] || resetTokens[decoded.id] !== token) {
+            logger.warn('Reset password: Invalid token');
             return response(res, { statusCode: 400, message: 'Token tidak valid atau kadaluarsa' });
         }
 
         const hashedPassword = await bcrypt.hash(newPassword, 10);
         await User.update({ password: hashedPassword }, { where: { id: decoded.id } });
 
-        delete resetTokens[decoded.id]; // Hapus token setelah digunakan
+        delete resetTokens[decoded.id];
 
+        logger.info('Password reset successful', { userId: decoded.id });
         return response(res, { statusCode: 200, message: 'Password berhasil diubah' });
     } catch (error) {
+        logger.error('Reset password error:', { error: error.message, stack: error.stack });
         return response(res, { statusCode: 500, message: 'Terjadi kesalahan', errors: error.message });
     }
 };
@@ -245,6 +266,7 @@ const resetPassword = async (req, res) => {
  */
 const updateProfile = async (req, res) => {
     try {
+        logger.info('Update profile request:', { userId: req.user.id });
         const { name, email, password, avatar } = req.body;
         const user = await User.findByPk(req.user.id);
 
@@ -267,8 +289,10 @@ const updateProfile = async (req, res) => {
 
         await user.update(updateData);
 
+        logger.info('Profile updated successfully', { userId: req.user.id });
         return response(res, { statusCode: 200, message: 'Profil berhasil diperbarui', data: user });
     } catch (error) {
+        logger.error('Update profile error:', { error: error.message, stack: error.stack });
         return response(res, { statusCode: 500, message: 'Terjadi kesalahan', errors: error.message });
     }
 };
@@ -279,7 +303,14 @@ const updateProfile = async (req, res) => {
  * @param {Object} res - Response object
  */
 const logout = async (req, res) => {
-    return response(res, { statusCode: 200, message: 'Logout berhasil, hapus token di frontend' });
+    try {
+        logger.info('Logout request:', { userId: req.user.id });
+        // Implementasi logout jika diperlukan
+        return response(res, { statusCode: 200, message: 'Logout berhasil' });
+    } catch (error) {
+        logger.error('Logout error:', { error: error.message, stack: error.stack });
+        return response(res, { statusCode: 500, message: 'Terjadi kesalahan', errors: error.message });
+    }
 };
 
 module.exports = {

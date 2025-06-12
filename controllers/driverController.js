@@ -3,12 +3,14 @@ const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const bcrypt = require('bcryptjs');
 const { saveBase64Image } = require('../utils/imageHelper');
+const { logger } = require('../utils/logger');
 
 /**
  * Mendapatkan semua driver
  */
 const getAllDrivers = async (req, res) => {
     try {
+        logger.info('Get all drivers request');
         const queryOptions = getQueryOptions(req.query);
 
         // Include model User dan filter berdasarkan role 'driver'
@@ -22,6 +24,7 @@ const getAllDrivers = async (req, res) => {
 
         const { count, rows: drivers } = await Driver.findAndCountAll(queryOptions);
 
+        logger.info('Successfully retrieved drivers', { count });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data driver',
@@ -31,6 +34,7 @@ const getAllDrivers = async (req, res) => {
             currentPage: parseInt(req.query.page) || 1,
         });
     } catch (error) {
+        logger.error('Error getting drivers:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data driver',
@@ -44,6 +48,7 @@ const getAllDrivers = async (req, res) => {
  */
 const getDriverById = async (req, res) => {
     try {
+        logger.info('Get driver by ID request:', { driverId: req.params.id });
         const driver = await Driver.findByPk(req.params.id, {
             include: [
                 { model: User, as: 'user' },
@@ -52,18 +57,21 @@ const getDriverById = async (req, res) => {
         });
 
         if (!driver) {
+            logger.warn('Driver not found:', { driverId: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan',
             });
         }
 
+        logger.info('Successfully retrieved driver:', { driverId: driver.id });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data driver',
             data: driver,
         });
     } catch (error) {
+        logger.error('Error getting driver by ID:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengambil data driver',
@@ -77,6 +85,7 @@ const getDriverById = async (req, res) => {
  */
 const createDriver = async (req, res) => {
     try {
+        logger.info('Create driver request:', { email: req.body.email });
         const { name, email, password, phone, vehicle_number, image } = req.body;
         const hashedPassword = await bcrypt.hash(password, 10);
 
@@ -104,12 +113,14 @@ const createDriver = async (req, res) => {
             status: 'inactive',
         });
 
+        logger.info('Driver created successfully:', { driverId: driver.id, userId: user.id });
         return response(res, {
             statusCode: 201,
             message: 'Driver berhasil ditambahkan',
             data: { user, driver },
         });
     } catch (error) {
+        logger.error('Error creating driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menambahkan driver',
@@ -123,6 +134,7 @@ const createDriver = async (req, res) => {
  */
 const updateDriver = async (req, res) => {
     try {
+        logger.info('Update driver request:', { driverId: req.params.id });
         const { id } = req.params;
         const { name, email, password, phone, vehicle_number, latitude, longitude, status, image } = req.body;
 
@@ -131,6 +143,7 @@ const updateDriver = async (req, res) => {
         });
 
         if (!driver) {
+            logger.warn('Driver not found for update:', { driverId: id });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan',
@@ -164,12 +177,14 @@ const updateDriver = async (req, res) => {
 
         await driver.update(driverData);
 
+        logger.info('Driver updated successfully:', { driverId: driver.id });
         return response(res, {
             statusCode: 200,
             message: 'Driver berhasil diupdate',
             data: driver,
         });
     } catch (error) {
+        logger.error('Error updating driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat mengupdate driver',
@@ -183,6 +198,7 @@ const updateDriver = async (req, res) => {
  */
 const deleteDriver = async (req, res) => {
     try {
+        logger.info('Delete driver request:', { driverId: req.params.id });
         const { id } = req.params;
 
         const driver = await Driver.findByPk(id, {
@@ -190,6 +206,7 @@ const deleteDriver = async (req, res) => {
         });
 
         if (!driver) {
+            logger.warn('Driver not found for deletion:', { driverId: id });
             return response(res, {
                 statusCode: 404,
                 message: 'Driver tidak ditemukan',
@@ -199,11 +216,13 @@ const deleteDriver = async (req, res) => {
         await driver.user.destroy();
         await driver.destroy();
 
+        logger.info('Driver deleted successfully:', { driverId: id });
         return response(res, {
             statusCode: 200,
             message: 'Driver berhasil dihapus',
         });
     } catch (error) {
+        logger.error('Error deleting driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menghapus driver',
@@ -217,10 +236,10 @@ const deleteDriver = async (req, res) => {
  */
 const updateDriverLocation = async (req, res) => {
     try {
+        logger.info('Update driver location request:', { userId: req.user.id });
         const { id: userId } = req.user;
         const { latitude, longitude } = req.body;
 
-        // Update lokasi driver di database
         const driver = await Driver.findOne({
             where: { userId },
             include: [
@@ -232,21 +251,24 @@ const updateDriverLocation = async (req, res) => {
         });
 
         if (!driver) {
+            logger.warn('Driver not found for location update:', { userId });
             return response(res, { statusCode: 404, message: 'Driver tidak ditemukan' });
         }
 
         await driver.update({ latitude, longitude });
 
+        logger.info('Driver location updated successfully:', { driverId: driver.id });
         return response(res, {
             statusCode: 200,
             message: 'Lokasi driver berhasil diperbarui',
             data: {
                 latitude,
                 longitude,
-                updatedAt: new Date() // Tambahkan timestamp update
+                updatedAt: new Date()
             },
         });
     } catch (error) {
+        logger.error('Error updating driver location:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memperbarui lokasi driver',

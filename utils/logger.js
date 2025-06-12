@@ -53,4 +53,15 @@ logger.rejections.handle(
     })
 );
 
-module.exports = logger;
+// utils/logger.js
+const requestLogger = (req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+};
+
+const errorLogger = (err, req, res, next) => {
+    console.error('Error:', err.stack);
+    next(err);
+};
+
+module.exports = { requestLogger, errorLogger, logger };
