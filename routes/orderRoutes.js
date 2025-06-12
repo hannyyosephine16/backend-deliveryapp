@@ -4,7 +4,6 @@ const {
     verifyToken,
     isCustomer,
     isOwner,
-    isAdmin
 } = require('../middlewares/authMiddleware');
 const {
     getOrdersByUser,
@@ -33,9 +32,7 @@ router.post('/review', verifyToken, isCustomer, createReviewValidator, validate,
 // Store owner routes
 router.get('/store', verifyToken, isOwner, getOrdersByStore);
 router.put('/:id/process', verifyToken, isOwner, processOrderByStore);
-
-// Admin routes
-router.put('/status', verifyToken, isAdmin, validate, updateOrderStatus);
+router.put('/status', verifyToken, validate, isOwner, updateOrderStatus);
 
 // General routes (accessible by all authenticated users)
 router.get('/:id', verifyToken, getOrderDetail);
