@@ -2,7 +2,7 @@ const { MenuItem, Store } = require('../models');
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const { saveBase64Image } = require('../utils/imageHelper');
-const logger = require('../utils/logger').logger;
+const { logger } = require('../utils/logger');
 
 /** 
  * Helper untuk ambil store berdasarkan user

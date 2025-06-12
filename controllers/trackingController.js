@@ -13,7 +13,7 @@ const getTrackingData = async (req, res) => {
 
         // Cek apakah customer memiliki akses ke order ini
         const order = await Order.findOne({
-            where: { id: id, userId },
+            where: { id: id, customerId: userId },
             include: [
                 {
                     model: Driver,

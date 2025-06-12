@@ -1,6 +1,6 @@
 const fs = require('fs');
 const path = require('path');
-const logger = require('./logger');
+const { logger } = require('./logger');
 
 /**
  * Menyimpan base64 sebagai file gambar

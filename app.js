@@ -41,7 +41,24 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server berjalan di port ${PORT}`);
+
+    // Start background jobs after server is ready
+    initBackgroundJobs();
 });
+
+// Initialize background jobs
+function initBackgroundJobs() {
+    const { checkExpiredRequests } = require('./utils/backgroundJobs');
+
+    // Check for expired driver requests every minute
+    setInterval(() => {
+        checkExpiredRequests().catch(error => {
+            console.error('Error in checkExpiredRequests background job:', error);
+        });
+    }, 60 * 1000);
+
+    console.log('Background jobs initialized');
+}
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {

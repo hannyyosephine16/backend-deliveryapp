@@ -1,6 +1,6 @@
 require('dotenv').config();
 const Queue = require('bull');
-const logger = require('./logger');
+const { logger } = require('./logger');
 
 console.log(process.env.REDIS_PORT);
 console.log(process.env.REDIS_HOST);

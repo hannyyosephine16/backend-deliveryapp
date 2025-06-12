@@ -1,7 +1,7 @@
 require('dotenv').config();
 const http = require('http');
 const app = require('./app');
-const logger = require('./utils/logger');
+const { logger } = require('./utils/logger');
 
 // Get the port and URLs from environment variables
 const PORT = Number(process.env.APP_PORT);
