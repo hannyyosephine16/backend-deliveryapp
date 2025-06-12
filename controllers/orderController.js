@@ -3,7 +3,7 @@ const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const euclideanDistance = require('../utils/euclideanDistance');
 const { logger } = require('../utils/logger');
-const { orderQueue } = require('../utils/queue');
+// Queue functionality moved to worker.js
 const { Op } = require('sequelize');
 
 // Fungsi untuk membatalkan order
@@ -22,21 +22,7 @@ async function cancelOrder(id) {
     }
 }
 
-async function cleanupQueue(orderId) {
-    try {
-        const jobs = await orderQueue.getJobs(['waiting', 'delayed', 'active']);
-
-        // Cari job yang terkait dengan orderId ini
-        const jobToRemove = jobs.find(job => job.data.orderId === orderId);
-
-        if (jobToRemove) {
-            await jobToRemove.remove();
-            logger.info(`Queue untuk order ${orderId} berhasil dihapus`);
-        }
-    } catch (error) {
-        logger.error(`Gagal menghapus queue untuk order ${orderId}:`, error);
-    }
-}
+// cleanupQueue function removed - handled by worker.js now
 
 // Fungsi pencarian driver di background
 async function findDriverInBackground(storeId, orderId) {
@@ -49,7 +35,7 @@ async function findDriverInBackground(storeId, orderId) {
         if (!store) {
             console.error(`Store ${storeId} not found`);
             await cancelOrder(orderId);
-            await cleanupQueue(orderId);
+            // Cleanup now handled by worker system
             return;
         }
 
@@ -59,7 +45,7 @@ async function findDriverInBackground(storeId, orderId) {
                 jobCompleted = true;
                 clearInterval(searchInterval);
                 await cancelOrder(orderId);
-                await cleanupQueue(orderId);
+                // Cleanup now handled by worker system
                 logger.info(`Order ${orderId} dibatalkan karena timeout 15 menit`);
             }
         }, 15 * 60 * 1000); // 15 menit dalam milidetik
@@ -153,11 +139,23 @@ async function findDriverInBackground(storeId, orderId) {
 
                     if (!existingRequest) {
                         // Buat driver request baru jika belum ada
-                        await DriverRequest.create({
+                        const driverRequest = await DriverRequest.create({
                             orderId: orderId,
                             driverId: nearestDriver.id,
                             status: 'pending'
                         });
+
+                        // Schedule timeout untuk driver request menggunakan worker
+                        try {
+                            const { workerManager } = require('../worker');
+                            await workerManager.scheduleDriverRequestTimeout(driverRequest.id, 15);
+                            logger.info(`Timeout scheduled for driver request ${driverRequest.id}`);
+                        } catch (workerError) {
+                            logger.error('Error scheduling driver request timeout:', {
+                                requestId: driverRequest.id,
+                                error: workerError.message
+                            });
+                        }
 
                         logger.info(`Driver request created for order ${orderId} with driver ${nearestDriver.id}`);
                         logger.info(`Driver ${nearestDriver.id} ditemukan untuk order ${orderId} pada jarak ${minDistance.toFixed(2)} km (Euclidean)`);
@@ -183,7 +181,7 @@ async function findDriverInBackground(storeId, orderId) {
             clearTimeout(timeout);
             clearInterval(searchInterval);
             await cancelOrder(orderId);
-            await cleanupQueue(orderId);
+            // Cleanup now handled by worker system
         }
     }
 }
@@ -373,12 +371,8 @@ const placeOrder = async (req, res) => {
 
         await transaction.commit();
 
-        orderQueue.add('find-driver', {
-            storeId: store.id,
-            orderId: orderResult.id
-        }, {
-            removeOnComplete: true, removeOnFail: true
-        });
+        // Driver search now handled automatically by findDriverInBackground
+        await findDriverInBackground(store.id, orderResult.id);
 
         return response(res, {
             statusCode: 201,
@@ -457,8 +451,7 @@ const processOrderByStore = async (req, res) => {
                 cancellationReason: 'Ditolak oleh toko'
             });
 
-            // Hapus queue pencarian driver jika ada
-            await cleanupQueue(order.id);
+            // Queue cleanup now handled by worker system
 
             return response(res, {
                 statusCode: 200,

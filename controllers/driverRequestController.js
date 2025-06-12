@@ -208,6 +208,18 @@ const respondToDriverRequest = async (req, res) => {
         const newStatus = action === 'accept' ? 'accepted' : 'rejected';
         await driverRequest.update({ status: newStatus });
 
+        // Cancel scheduled timeout untuk request ini karena sudah direspon
+        try {
+            const { workerManager } = require('../worker');
+            await workerManager.cancelDriverRequestTimeout(driverRequest.id);
+            logger.info(`Cancelled timeout for driver request ${driverRequest.id}`);
+        } catch (workerError) {
+            logger.error('Error cancelling driver request timeout:', {
+                requestId: driverRequest.id,
+                error: workerError.message
+            });
+        }
+
         if (action === 'accept') {
             // Check if order is already taken
             const existingAcceptedRequest = await DriverRequest.findOne({

@@ -5,6 +5,9 @@ const morgan = require('morgan');
 const { requestLogger, errorLogger } = require('./utils/logger');
 const { apiLimiter, authLimiter } = require('./middleware/rateLimiter');
 const cache = require('./utils/cache');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yamljs');
+const swaggerDocument = YAML.load('./swagger.yaml');
 
 const app = express();
 
@@ -22,6 +25,13 @@ app.use('/api', apiLimiter);
 // Cache middleware for GET requests
 app.use('/api/stores', cache.middleware(300)); // Cache store data for 5 minutes
 app.use('/api/menu', cache.middleware(300)); // Cache menu data for 5 minutes
+
+// Swagger documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocument, {
+    customSiteTitle: 'DelPick API Documentation',
+    customCss: '.swagger-ui .topbar { display: none }',
+    customfavIcon: '/favicon.ico'
+}));
 
 // Routes
 app.use('/api/v1', require('./routes'));
@@ -41,24 +51,11 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server berjalan di port ${PORT}`);
+    console.log(`Dokumentasi API tersedia di http://localhost:${PORT}/api-docs`);
 
-    // Start background jobs after server is ready
-    initBackgroundJobs();
+    // Note: Background jobs are now handled by worker.js
+    console.log('Background jobs akan dijalankan oleh worker.js - jalankan: node worker.js');
 });
-
-// Initialize background jobs
-function initBackgroundJobs() {
-    const { checkExpiredRequests } = require('./utils/backgroundJobs');
-
-    // Check for expired driver requests every minute
-    setInterval(() => {
-        checkExpiredRequests().catch(error => {
-            console.error('Error in checkExpiredRequests background job:', error);
-        });
-    }, 60 * 1000);
-
-    console.log('Background jobs initialized');
-}
 
 // Handle uncaught exceptions
 process.on('uncaughtException', (error) => {

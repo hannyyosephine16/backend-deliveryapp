@@ -18,15 +18,27 @@ const getStoreByUserId = async (userId) => {
  */
 const getAllMenuItems = async (req, res) => {
     try {
-        logger.info('Get all menu items request');
-        const queryOptions = getQueryOptions(req.query, [{ model: Store, as: 'store' }]);
+        logger.info('Get owner menu items request:', { userId: req.user.id });
+
+        // Cari store berdasarkan user yang login
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
+            logger.warn('Store not found for user:', { userId: req.user.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Toko tidak ditemukan untuk user ini',
+            });
+        }
+
+        const queryOptions = getQueryOptions(req.query);
+        queryOptions.where = { storeId: store.id };
 
         const { count, rows: menuItems } = await MenuItem.findAndCountAll(queryOptions);
 
-        logger.info('Successfully retrieved menu items', { count });
+        logger.info('Successfully retrieved owner menu items', { count, storeId: store.id });
         return response(res, {
             statusCode: 200,
-            message: 'Berhasil mendapatkan data menu',
+            message: 'Berhasil mendapatkan data menu item',
             data: {
                 totalItems: count,
                 totalPages: Math.ceil(count / queryOptions.limit),
@@ -35,10 +47,10 @@ const getAllMenuItems = async (req, res) => {
             },
         });
     } catch (error) {
-        logger.error('Error getting menu items:', { error: error.message, stack: error.stack });
+        logger.error('Error getting owner menu items:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengambil data menu',
+            message: 'Terjadi kesalahan saat mengambil data menu item',
             errors: error.message,
         });
     }
@@ -115,14 +127,25 @@ const getMenuItemById = async (req, res) => {
 };
 
 /**
- * Menambahkan menu item baru
+ * Menambahkan menu item baru berdasarkan store owner yang login
  * @param {Object} req - Request object
  * @param {Object} res - Response object
  */
 const createMenuItem = async (req, res) => {
     try {
-        logger.info('Create menu item request:', { storeId: req.body.storeId, name: req.body.name });
-        const { name, description, price, image, storeId } = req.body;
+        logger.info('Create menu item request:', { userId: req.user.id, name: req.body.name });
+
+        // Cari store berdasarkan user yang login
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
+            logger.warn('Store not found for user:', { userId: req.user.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Toko tidak ditemukan untuk user ini',
+            });
+        }
+
+        const { name, description, price, image } = req.body;
 
         // Simpan gambar jika imageUrl berupa base64
         let imagePath = null;
@@ -135,10 +158,10 @@ const createMenuItem = async (req, res) => {
             description,
             price,
             imageUrl: imagePath,
-            storeId,
+            storeId: store.id, // Otomatis menggunakan store milik user yang login
         });
 
-        logger.info('Menu item created successfully:', { menuItemId: menuItem.id });
+        logger.info('Menu item created successfully:', { menuItemId: menuItem.id, storeId: store.id });
         return response(res, {
             statusCode: 201,
             message: 'Menu berhasil ditambahkan',
@@ -155,20 +178,41 @@ const createMenuItem = async (req, res) => {
 };
 
 /**
- * Mengupdate menu item berdasarkan ID
+ * Mengupdate menu item berdasarkan ID (hanya menu milik store owner yang login)
  * @param {Object} req - Request object
  * @param {Object} res - Response object
  */
 const updateMenuItem = async (req, res) => {
     try {
-        logger.info('Update menu item request:', { menuItemId: req.params.id });
+        logger.info('Update menu item request:', { menuItemId: req.params.id, userId: req.user.id });
+
+        // Cari store berdasarkan user yang login
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
+            logger.warn('Store not found for user:', { userId: req.user.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Toko tidak ditemukan untuk user ini',
+            });
+        }
+
         const { id } = req.params;
         const { name, description, price, image } = req.body;
 
-        const menuItem = await MenuItem.findByPk(id);
+        // Cari menu item yang hanya milik store user yang login
+        const menuItem = await MenuItem.findOne({
+            where: {
+                id: id,
+                storeId: store.id  // Pastikan menu item milik store user yang login
+            }
+        });
+
         if (!menuItem) {
-            logger.warn('Menu item not found for update:', { menuItemId: id });
-            return response(res, { statusCode: 404, message: 'Menu tidak ditemukan' });
+            logger.warn('Menu item not found or not owned by user:', { menuItemId: id, userId: req.user.id, storeId: store.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Menu tidak ditemukan atau tidak memiliki akses'
+            });
         }
 
         // Simpan gambar jika imageUrl berupa base64
@@ -184,7 +228,7 @@ const updateMenuItem = async (req, res) => {
             imageUrl: imagePath,
         });
 
-        logger.info('Menu item updated successfully:', { menuItemId: menuItem.id });
+        logger.info('Menu item updated successfully:', { menuItemId: menuItem.id, storeId: store.id });
         return response(res, {
             statusCode: 200,
             message: 'Menu berhasil diupdate',
@@ -201,24 +245,45 @@ const updateMenuItem = async (req, res) => {
 };
 
 /**
- * Menghapus menu item berdasarkan ID
+ * Menghapus menu item berdasarkan ID (hanya menu milik store owner yang login)
  * @param {Object} req - Request object
  * @param {Object} res - Response object
  */
 const deleteMenuItem = async (req, res) => {
     try {
-        logger.info('Delete menu item request:', { menuItemId: req.params.id });
+        logger.info('Delete menu item request:', { menuItemId: req.params.id, userId: req.user.id });
+
+        // Cari store berdasarkan user yang login
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
+            logger.warn('Store not found for user:', { userId: req.user.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Toko tidak ditemukan untuk user ini',
+            });
+        }
+
         const { id } = req.params;
 
-        const menuItem = await MenuItem.findByPk(id);
+        // Cari menu item yang hanya milik store user yang login
+        const menuItem = await MenuItem.findOne({
+            where: {
+                id: id,
+                storeId: store.id  // Pastikan menu item milik store user yang login
+            }
+        });
+
         if (!menuItem) {
-            logger.warn('Menu item not found for deletion:', { menuItemId: id });
-            return response(res, { statusCode: 404, message: 'Menu tidak ditemukan' });
+            logger.warn('Menu item not found or not owned by user:', { menuItemId: id, userId: req.user.id, storeId: store.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Menu tidak ditemukan atau tidak memiliki akses'
+            });
         }
 
         await menuItem.destroy();
 
-        logger.info('Menu item deleted successfully:', { menuItemId: id });
+        logger.info('Menu item deleted successfully:', { menuItemId: id, storeId: store.id });
         return response(res, {
             statusCode: 200,
             message: 'Menu berhasil dihapus',
