@@ -145,7 +145,7 @@ const createMenuItem = async (req, res) => {
             });
         }
 
-        const { name, description, price, image } = req.body;
+        const { name, description, price, image, quantity } = req.body;
 
         // Simpan gambar jika imageUrl berupa base64
         let imagePath = null;
@@ -159,6 +159,7 @@ const createMenuItem = async (req, res) => {
             price,
             imageUrl: imagePath,
             storeId: store.id, // Otomatis menggunakan store milik user yang login
+            quantity
         });
 
         logger.info('Menu item created successfully:', { menuItemId: menuItem.id, storeId: store.id });
@@ -197,7 +198,7 @@ const updateMenuItem = async (req, res) => {
         }
 
         const { id } = req.params;
-        const { name, description, price, image } = req.body;
+        const { name, description, price, image, quantity } = req.body;
 
         // Cari menu item yang hanya milik store user yang login
         const menuItem = await MenuItem.findOne({
@@ -226,6 +227,7 @@ const updateMenuItem = async (req, res) => {
             description,
             price,
             imageUrl: imagePath,
+            quantity
         });
 
         logger.info('Menu item updated successfully:', { menuItemId: menuItem.id, storeId: store.id });

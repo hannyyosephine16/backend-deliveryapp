@@ -5,21 +5,51 @@ const { checkExpiredRequests, handleRequestTimeout } = require('./utils/backgrou
 const { DriverRequest, Driver, Order } = require('./models');
 const { Op } = require('sequelize');
 
-// Redis connection options
+// Redis connection options with optimized settings
 const redisConfig = {
     redis: {
         port: process.env.REDIS_PORT || 6379,
         host: process.env.REDIS_HOST || 'localhost',
         password: process.env.REDIS_PASSWORD,
-        tls: process.env.REDIS_TLS === 'true' ? {} : undefined
+        tls: process.env.REDIS_TLS === 'true' ? {} : undefined,
+        maxRetriesPerRequest: 3,
+        enableReadyCheck: false,
+        connectTimeout: 10000
+    },
+    limiter: {
+        max: 1000, // Maximum number of jobs processed
+        duration: 5000 // Per 5 seconds
     }
 };
 
-// Create background jobs queue
-const backgroundJobsQueue = new Queue('background-jobs', redisConfig);
-const driverRequestQueue = new Queue('driver-requests', redisConfig);
+// Create background jobs queue with optimized settings
+const backgroundJobsQueue = new Queue('background-jobs', {
+    ...redisConfig,
+    defaultJobOptions: {
+        removeOnComplete: 100, // Keep only last 100 completed jobs
+        removeOnFail: 50, // Keep only last 50 failed jobs
+        attempts: 3, // Maximum retry attempts
+        backoff: {
+            type: 'exponential',
+            delay: 1000 // Start with 1 second delay
+        }
+    }
+});
 
-// Process background jobs queue
+const driverRequestQueue = new Queue('driver-requests', {
+    ...redisConfig,
+    defaultJobOptions: {
+        removeOnComplete: 50,
+        removeOnFail: 25,
+        attempts: 2,
+        backoff: {
+            type: 'exponential',
+            delay: 2000
+        }
+    }
+});
+
+// Process background jobs queue with optimized batch processing
 backgroundJobsQueue.process('check-expired-requests', async (job) => {
     try {
         logger.info('Processing expired requests check job');
@@ -32,7 +62,7 @@ backgroundJobsQueue.process('check-expired-requests', async (job) => {
     }
 });
 
-// Process driver request queue for timeout handling
+// Process driver request queue with optimized timeout handling
 driverRequestQueue.process('handle-timeout', async (job) => {
     try {
         const { requestId } = job.data;
@@ -56,7 +86,7 @@ driverRequestQueue.process('handle-timeout', async (job) => {
     }
 });
 
-// Error handling
+// Error handling with rate limiting
 backgroundJobsQueue.on('error', (error) => {
     logger.error('Background jobs queue error:', error);
 });
@@ -73,31 +103,35 @@ driverRequestQueue.on('failed', (job, err) => {
     logger.error('Driver request job failed:', { jobId: job.id, jobData: job.data, error: err.message });
 });
 
-// Success logging
-backgroundJobsQueue.on('completed', (job, result) => {
+// Success logging with cleanup
+backgroundJobsQueue.on('completed', async (job, result) => {
     logger.info('Background job completed:', { jobId: job.id, result });
+    // Cleanup old jobs
+    await backgroundJobsQueue.clean(3600000, 'completed'); // Clean jobs older than 1 hour
 });
 
-driverRequestQueue.on('completed', (job, result) => {
+driverRequestQueue.on('completed', async (job, result) => {
     logger.info('Driver request job completed:', { jobId: job.id, result });
+    // Cleanup old jobs
+    await driverRequestQueue.clean(3600000, 'completed'); // Clean jobs older than 1 hour
 });
 
-// Worker management functions
+// Worker management functions with optimized scheduling
 const workerManager = {
-    // Schedule recurring expired requests check
+    // Schedule recurring expired requests check with optimized interval
     async scheduleExpiredRequestsCheck() {
         try {
             // Remove existing scheduled jobs to avoid duplicates
             await backgroundJobsQueue.clean(0, 'delayed');
 
-            // Schedule to run every minute
+            // Schedule to run every 5 minutes instead of every minute
             const job = await backgroundJobsQueue.add(
                 'check-expired-requests',
                 {},
                 {
-                    repeat: { cron: '* * * * *' }, // Every minute
-                    removeOnComplete: 10, // Keep last 10 completed jobs
-                    removeOnFail: 5 // Keep last 5 failed jobs
+                    repeat: { cron: '*/5 * * * *' }, // Every 5 minutes
+                    removeOnComplete: 10,
+                    removeOnFail: 5
                 }
             );
 
@@ -109,16 +143,17 @@ const workerManager = {
         }
     },
 
-    // Schedule driver request timeout
+    // Schedule driver request timeout with optimized settings
     async scheduleDriverRequestTimeout(requestId, delayMinutes = 15) {
         try {
             const job = await driverRequestQueue.add(
                 'handle-timeout',
                 { requestId },
                 {
-                    delay: delayMinutes * 60 * 1000, // Convert minutes to milliseconds
+                    delay: delayMinutes * 60 * 1000,
                     removeOnComplete: 5,
-                    removeOnFail: 3
+                    removeOnFail: 3,
+                    jobId: `timeout-${requestId}` // Add jobId for better tracking
                 }
             );
 
@@ -130,7 +165,7 @@ const workerManager = {
         }
     },
 
-    // Cancel driver request timeout
+    // Cancel driver request timeout with optimized cleanup
     async cancelDriverRequestTimeout(requestId) {
         try {
             const jobs = await driverRequestQueue.getJobs(['delayed', 'waiting']);
@@ -153,7 +188,7 @@ const workerManager = {
         }
     },
 
-    // Get worker status
+    // Get worker status with optimized querying
     async getWorkerStatus() {
         try {
             const [backgroundStatus, driverRequestStatus] = await Promise.all([
@@ -172,15 +207,23 @@ const workerManager = {
         }
     },
 
-    // Initialize all background jobs
+    // Initialize all background jobs with optimized settings
     async initializeBackgroundJobs() {
         try {
-            logger.info('Initializing background jobs with queue system...');
+            logger.info('Initializing background jobs with optimized queue system...');
+
+            // Clean up any stale jobs
+            await Promise.all([
+                backgroundJobsQueue.clean(3600000, 'completed'),
+                backgroundJobsQueue.clean(3600000, 'failed'),
+                driverRequestQueue.clean(3600000, 'completed'),
+                driverRequestQueue.clean(3600000, 'failed')
+            ]);
 
             // Schedule expired requests check
             await this.scheduleExpiredRequestsCheck();
 
-            logger.info('Background jobs initialized successfully with queues');
+            logger.info('Background jobs initialized successfully with optimized queues');
             return true;
         } catch (error) {
             logger.error('Error initializing background jobs:', error);
@@ -188,10 +231,18 @@ const workerManager = {
         }
     },
 
-    // Graceful shutdown
+    // Graceful shutdown with cleanup
     async shutdown() {
         try {
             logger.info('Shutting down worker queues...');
+
+            // Clean up before shutting down
+            await Promise.all([
+                backgroundJobsQueue.clean(0, 'completed'),
+                backgroundJobsQueue.clean(0, 'failed'),
+                driverRequestQueue.clean(0, 'completed'),
+                driverRequestQueue.clean(0, 'failed')
+            ]);
 
             await Promise.all([
                 backgroundJobsQueue.close(),
@@ -228,7 +279,7 @@ module.exports = {
 
 // If this file is run directly, start the worker
 if (require.main === module) {
-    logger.info('Starting DelPick background worker...');
+    logger.info('Starting DelPick background worker with optimized settings...');
 
     workerManager.initializeBackgroundJobs()
         .then(() => {

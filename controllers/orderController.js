@@ -29,13 +29,16 @@ async function findDriverInBackground(storeId, orderId) {
     let timeout;
     let searchInterval;
     let jobCompleted = false;
+    let lastSearchTime = 0;
+    const SEARCH_COOLDOWN = 30000; // 30 detik cooldown antara pencarian
+    const MAX_RETRIES = 30; // Maksimal 30 kali pencarian (15 menit)
+    let retryCount = 0;
 
     try {
         const store = await Store.findByPk(storeId);
         if (!store) {
             console.error(`Store ${storeId} not found`);
             await cancelOrder(orderId);
-            // Cleanup now handled by worker system
             return;
         }
 
@@ -45,16 +48,31 @@ async function findDriverInBackground(storeId, orderId) {
                 jobCompleted = true;
                 clearInterval(searchInterval);
                 await cancelOrder(orderId);
-                // Cleanup now handled by worker system
                 logger.info(`Order ${orderId} dibatalkan karena timeout 15 menit`);
             }
-        }, 15 * 60 * 1000); // 15 menit dalam milidetik
+        }, 15 * 60 * 1000);
 
-        const maxDistance = 5; // 5 km radius maksimal (dalam Euclidean distance)
+        const maxDistance = 5;
+        const BATCH_SIZE = 10; // Jumlah driver yang diproses per batch
 
-        // Fungsi untuk mencari driver
+        // Fungsi untuk mencari driver dengan optimisasi
         const searchForDriver = async () => {
             if (jobCompleted) return;
+
+            const now = Date.now();
+            if (now - lastSearchTime < SEARCH_COOLDOWN) return;
+            lastSearchTime = now;
+
+            if (retryCount >= MAX_RETRIES) {
+                jobCompleted = true;
+                clearTimeout(timeout);
+                clearInterval(searchInterval);
+                await cancelOrder(orderId);
+                logger.info(`Order ${orderId} dibatalkan karena mencapai batas maksimal pencarian`);
+                return;
+            }
+
+            retryCount++;
 
             try {
                 // Cek apakah sudah ada driver yang menerima order ini
@@ -66,7 +84,6 @@ async function findDriverInBackground(storeId, orderId) {
                 });
 
                 if (existingAcceptedRequest) {
-                    // Jika sudah ada driver yang menerima, hentikan pencarian
                     jobCompleted = true;
                     clearTimeout(timeout);
                     clearInterval(searchInterval);
@@ -74,19 +91,25 @@ async function findDriverInBackground(storeId, orderId) {
                     return;
                 }
 
-                // Dapatkan semua driver yang available dan belum menolak order ini
+                // Optimisasi query dengan batasan dan indeks
                 const drivers = await Driver.findAll({
                     where: {
                         latitude: { [Op.not]: null },
                         longitude: { [Op.not]: null },
                         status: 'active',
+                        [Op.and]: [
+                            sequelize.literal(`ST_Distance_Sphere(
+                                point(longitude, latitude),
+                                point(${store.longitude}, ${store.latitude})
+                            ) <= ${maxDistance * 1000}`)
+                        ]
                     },
                     include: [
                         {
                             model: User,
                             as: 'user',
                             attributes: ['id'],
-                            required: true // Optional, depending on whether Driver must have a User
+                            required: true
                         },
                         {
                             model: DriverRequest,
@@ -97,68 +120,57 @@ async function findDriverInBackground(storeId, orderId) {
                             },
                             required: false
                         }
+                    ],
+                    limit: BATCH_SIZE,
+                    order: [
+                        sequelize.literal(`ST_Distance_Sphere(
+                            point(longitude, latitude),
+                            point(${store.longitude}, ${store.latitude})
+                        ) ASC`)
                     ]
                 });
 
-                let nearestDriver = null;
-                let minDistance = Infinity;
-
-                // Filter driver yang berada dalam radius 5 km menggunakan Euclidean distance
-                drivers.forEach((driver) => {
-                    if (!driver.latitude || !driver.longitude) return;
-
-                    // Skip driver yang sudah menolak order ini
-                    if (driver.driverRequests &&
-                        driver.driverRequests.some(req => req.status === 'rejected' && req.orderId === orderId)) {
-                        return;
-                    }
-
-                    const distance = euclideanDistance(
-                        store.latitude,
-                        store.longitude,
-                        driver.latitude,
-                        driver.longitude
-                    );
-
-                    // Hanya pertimbangkan driver dalam radius 5 km
-                    if (distance <= maxDistance && distance < minDistance) {
-                        minDistance = distance;
-                        nearestDriver = driver;
-                    }
-                });
-
-                if (nearestDriver) {
-                    // Cek apakah sudah ada request pending untuk driver ini
-                    const existingRequest = await DriverRequest.findOne({
-                        where: {
-                            orderId: orderId,
-                            driverId: nearestDriver.id,
-                            status: 'pending'
+                if (drivers.length > 0) {
+                    // Proses driver dalam batch
+                    for (const driver of drivers) {
+                        // Skip driver yang sudah menolak order ini
+                        if (driver.driverRequests &&
+                            driver.driverRequests.some(req => req.status === 'rejected' && req.orderId === orderId)) {
+                            continue;
                         }
-                    });
 
-                    if (!existingRequest) {
-                        // Buat driver request baru jika belum ada
-                        const driverRequest = await DriverRequest.create({
-                            orderId: orderId,
-                            driverId: nearestDriver.id,
-                            status: 'pending'
+                        // Cek apakah sudah ada request pending untuk driver ini
+                        const existingRequest = await DriverRequest.findOne({
+                            where: {
+                                orderId: orderId,
+                                driverId: driver.id,
+                                status: 'pending'
+                            }
                         });
 
-                        // Schedule timeout untuk driver request menggunakan worker
-                        try {
-                            const { workerManager } = require('../worker');
-                            await workerManager.scheduleDriverRequestTimeout(driverRequest.id, 15);
-                            logger.info(`Timeout scheduled for driver request ${driverRequest.id}`);
-                        } catch (workerError) {
-                            logger.error('Error scheduling driver request timeout:', {
-                                requestId: driverRequest.id,
-                                error: workerError.message
+                        if (!existingRequest) {
+                            // Buat driver request baru
+                            const driverRequest = await DriverRequest.create({
+                                orderId: orderId,
+                                driverId: driver.id,
+                                status: 'pending'
                             });
-                        }
 
-                        logger.info(`Driver request created for order ${orderId} with driver ${nearestDriver.id}`);
-                        logger.info(`Driver ${nearestDriver.id} ditemukan untuk order ${orderId} pada jarak ${minDistance.toFixed(2)} km (Euclidean)`);
+                            // Schedule timeout untuk driver request
+                            try {
+                                const { workerManager } = require('../worker');
+                                await workerManager.scheduleDriverRequestTimeout(driverRequest.id, 15);
+                                logger.info(`Timeout scheduled for driver request ${driverRequest.id}`);
+                            } catch (workerError) {
+                                logger.error('Error scheduling driver request timeout:', {
+                                    requestId: driverRequest.id,
+                                    error: workerError.message
+                                });
+                            }
+
+                            logger.info(`Driver request created for order ${orderId} with driver ${driver.id}`);
+                            break; // Keluar dari loop setelah menemukan driver pertama
+                        }
                     }
                 } else {
                     logger.info(`Tidak menemukan driver yang tersedia dalam radius ${maxDistance} km untuk order ${orderId}`);
@@ -171,8 +183,8 @@ async function findDriverInBackground(storeId, orderId) {
         // Jalankan pencarian segera
         await searchForDriver();
 
-        // Set interval pencarian setiap 30 detik
-        searchInterval = setInterval(searchForDriver, 30000);
+        // Set interval pencarian dengan cooldown
+        searchInterval = setInterval(searchForDriver, SEARCH_COOLDOWN);
 
     } catch (error) {
         logger.error('Error in findDriverInBackground:', error);
@@ -181,7 +193,6 @@ async function findDriverInBackground(storeId, orderId) {
             clearTimeout(timeout);
             clearInterval(searchInterval);
             await cancelOrder(orderId);
-            // Cleanup now handled by worker system
         }
     }
 }
