@@ -1,310 +1,269 @@
+'use strict';
+
 const { MenuItem, Store } = require('../models');
-const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const { saveBase64Image } = require('../utils/imageHelper');
 const { logger } = require('../utils/logger');
 
-/** 
- * Helper untuk ambil store berdasarkan user
- * */
-const getStoreByUserId = async (userId) => {
-    return await Store.findOne({ where: { userId } });
-};
-
 /**
- * Mendapatkan semua menu item
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all menu items
  */
 const getAllMenuItems = async (req, res) => {
     try {
-        logger.info('Get owner menu items request:', { userId: req.user.id });
+        logger.info('Get all menu items request');
+        const menuItems = await MenuItem.findAll({
+            include: [{
+                model: Store,
+                as: 'store',
+                attributes: ['name', 'image_url']
+            }]
+        });
 
-        // Cari store berdasarkan user yang login
-        const store = await getStoreByUserId(req.user.id);
-        if (!store) {
-            logger.warn('Store not found for user:', { userId: req.user.id });
-            return response(res, {
-                statusCode: 404,
-                message: 'Toko tidak ditemukan untuk user ini',
-            });
-        }
-
-        const queryOptions = getQueryOptions(req.query);
-        queryOptions.where = { storeId: store.id };
-
-        const { count, rows: menuItems } = await MenuItem.findAndCountAll(queryOptions);
-
-        logger.info('Successfully retrieved owner menu items', { count, storeId: store.id });
+        logger.info('Successfully retrieved menu items');
         return response(res, {
             statusCode: 200,
-            message: 'Berhasil mendapatkan data menu item',
-            data: {
-                totalItems: count,
-                totalPages: Math.ceil(count / queryOptions.limit),
-                currentPage: parseInt(req.query.page) || 1,
-                menuItems,
-            },
+            message: 'Berhasil mendapatkan menu items',
+            data: menuItems
         });
     } catch (error) {
-        logger.error('Error getting owner menu items:', { error: error.message, stack: error.stack });
+        logger.error('Error getting menu items:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengambil data menu item',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat mengambil menu items',
+            errors: error.message
         });
     }
 };
 
 /**
- * Mendapatkan menu item berdasarkan storeId
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get menu items by store
  */
-const getMenuItemsByStoreId = async (req, res) => {
+const getMenuItemsByStore = async (req, res) => {
     try {
-        const { id } = req.params;
-        const queryOptions = getQueryOptions(req.query);
+        logger.info('Get menu items by store request:', { store_id: req.params.store_id });
+        const menuItems = await MenuItem.findAll({
+            where: { store_id: req.params.store_id },
+            include: [{
+                model: Store,
+                as: 'store',
+                attributes: ['name', 'image_url']
+            }]
+        });
 
-        // Filter berdasarkan storeId
-        queryOptions.where = { storeId: id };
-
-        const { count, rows: menuItems } = await MenuItem.findAndCountAll(queryOptions);
-
+        logger.info('Successfully retrieved menu items for store:', { store_id: req.params.store_id });
         return response(res, {
             statusCode: 200,
-            message: 'Berhasil mendapatkan data menu item',
-            data: {
-                totalItems: count,
-                totalPages: Math.ceil(count / queryOptions.limit),
-                currentPage: parseInt(req.query.page) || 1,
-                menuItems,
-            },
+            message: 'Berhasil mendapatkan menu items',
+            data: menuItems
         });
     } catch (error) {
+        logger.error('Error getting menu items by store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengambil data menu item',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat mengambil menu items',
+            errors: error.message
         });
     }
 };
 
 /**
- * Mendapatkan menu item berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get menu item by ID
  */
 const getMenuItemById = async (req, res) => {
     try {
-        logger.info('Get menu item by ID request:', { menuItemId: req.params.id });
+        logger.info('Get menu item by ID request:', { menu_item_id: req.params.id });
         const menuItem = await MenuItem.findByPk(req.params.id, {
-            include: [{ model: Store, as: 'store' }],
+            include: [{
+                model: Store,
+                as: 'store',
+                attributes: ['name', 'image_url']
+            }]
         });
 
         if (!menuItem) {
-            logger.warn('Menu item not found:', { menuItemId: req.params.id });
+            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Menu tidak ditemukan',
+                message: 'Menu item tidak ditemukan'
             });
         }
 
-        logger.info('Successfully retrieved menu item:', { menuItemId: menuItem.id });
+        logger.info('Successfully retrieved menu item:', { menu_item_id: menuItem.id });
         return response(res, {
             statusCode: 200,
-            message: 'Berhasil mendapatkan data menu',
-            data: menuItem,
+            message: 'Berhasil mendapatkan menu item',
+            data: menuItem
         });
     } catch (error) {
         logger.error('Error getting menu item by ID:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengambil data menu',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat mengambil menu item',
+            errors: error.message
         });
     }
 };
 
 /**
- * Menambahkan menu item baru berdasarkan store owner yang login
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Create menu item
  */
 const createMenuItem = async (req, res) => {
     try {
-        logger.info('Create menu item request:', { userId: req.user.id, name: req.body.name });
+        logger.info('Create menu item request:', { store_id: req.body.store_id });
+        const { name, price, description, store_id, category, is_available } = req.body;
 
-        // Cari store berdasarkan user yang login
-        const store = await getStoreByUserId(req.user.id);
-        if (!store) {
-            logger.warn('Store not found for user:', { userId: req.user.id });
-            return response(res, {
-                statusCode: 404,
-                message: 'Toko tidak ditemukan untuk user ini',
-            });
-        }
-
-        const { name, description, price, image, quantity } = req.body;
-
-        // Simpan gambar jika imageUrl berupa base64
-        let imagePath = null;
-        if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'menu-items', 'menu');
+        let image_url = null;
+        if (req.body.image && req.body.image.startsWith('data:image')) {
+            image_url = saveBase64Image(req.body.image, 'menu-items', 'item');
         }
 
         const menuItem = await MenuItem.create({
             name,
-            description,
             price,
-            imageUrl: imagePath,
-            storeId: store.id, // Otomatis menggunakan store milik user yang login
-            quantity
+            description,
+            image: image_url,
+            store_id,
+            category,
+            is_available: is_available ?? true
         });
 
-        logger.info('Menu item created successfully:', { menuItemId: menuItem.id, storeId: store.id });
+        logger.info('Menu item created successfully:', { menu_item_id: menuItem.id });
         return response(res, {
             statusCode: 201,
-            message: 'Menu berhasil ditambahkan',
-            data: menuItem,
+            message: 'Menu item berhasil ditambahkan',
+            data: menuItem
         });
     } catch (error) {
         logger.error('Error creating menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat menambahkan menu',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat menambahkan menu item',
+            errors: error.message
         });
     }
 };
 
 /**
- * Mengupdate menu item berdasarkan ID (hanya menu milik store owner yang login)
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Update menu item
  */
 const updateMenuItem = async (req, res) => {
     try {
-        logger.info('Update menu item request:', { menuItemId: req.params.id, userId: req.user.id });
-
-        // Cari store berdasarkan user yang login
-        const store = await getStoreByUserId(req.user.id);
-        if (!store) {
-            logger.warn('Store not found for user:', { userId: req.user.id });
-            return response(res, {
-                statusCode: 404,
-                message: 'Toko tidak ditemukan untuk user ini',
-            });
-        }
-
-        const { id } = req.params;
-        const { name, description, price, image, quantity } = req.body;
-
-        // Cari menu item yang hanya milik store user yang login
-        const menuItem = await MenuItem.findOne({
-            where: {
-                id: id,
-                storeId: store.id  // Pastikan menu item milik store user yang login
-            }
-        });
+        logger.info('Update menu item request:', { menu_item_id: req.params.id });
+        const { name, price, description, category, is_available } = req.body;
+        const menuItem = await MenuItem.findByPk(req.params.id);
 
         if (!menuItem) {
-            logger.warn('Menu item not found or not owned by user:', { menuItemId: id, userId: req.user.id, storeId: store.id });
+            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Menu tidak ditemukan atau tidak memiliki akses'
+                message: 'Menu item tidak ditemukan'
             });
         }
 
-        // Simpan gambar jika imageUrl berupa base64
-        let imagePath = menuItem.imageUrl;
-        if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'menu-items', 'menu');
+        const updateData = {
+            name,
+            price,
+            description,
+            category,
+            is_available
+        };
+
+        if (req.body.image && req.body.image.startsWith('data:image')) {
+            updateData.image = saveBase64Image(req.body.image, 'menu-items', 'item');
         }
 
-        await menuItem.update({
-            name,
-            description,
-            price,
-            imageUrl: imagePath,
-            quantity
-        });
+        await menuItem.update(updateData);
 
-        logger.info('Menu item updated successfully:', { menuItemId: menuItem.id, storeId: store.id });
+        logger.info('Menu item updated successfully:', { menu_item_id: menuItem.id });
         return response(res, {
             statusCode: 200,
-            message: 'Menu berhasil diupdate',
-            data: menuItem,
+            message: 'Menu item berhasil diperbarui',
+            data: menuItem
         });
     } catch (error) {
         logger.error('Error updating menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate menu',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat memperbarui menu item',
+            errors: error.message
         });
     }
 };
 
 /**
- * Menghapus menu item berdasarkan ID (hanya menu milik store owner yang login)
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Delete menu item
  */
 const deleteMenuItem = async (req, res) => {
     try {
-        logger.info('Delete menu item request:', { menuItemId: req.params.id, userId: req.user.id });
-
-        // Cari store berdasarkan user yang login
-        const store = await getStoreByUserId(req.user.id);
-        if (!store) {
-            logger.warn('Store not found for user:', { userId: req.user.id });
-            return response(res, {
-                statusCode: 404,
-                message: 'Toko tidak ditemukan untuk user ini',
-            });
-        }
-
-        const { id } = req.params;
-
-        // Cari menu item yang hanya milik store user yang login
-        const menuItem = await MenuItem.findOne({
-            where: {
-                id: id,
-                storeId: store.id  // Pastikan menu item milik store user yang login
-            }
-        });
+        logger.info('Delete menu item request:', { menu_item_id: req.params.id });
+        const menuItem = await MenuItem.findByPk(req.params.id);
 
         if (!menuItem) {
-            logger.warn('Menu item not found or not owned by user:', { menuItemId: id, userId: req.user.id, storeId: store.id });
+            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Menu tidak ditemukan atau tidak memiliki akses'
+                message: 'Menu item tidak ditemukan'
             });
         }
 
         await menuItem.destroy();
 
-        logger.info('Menu item deleted successfully:', { menuItemId: id, storeId: store.id });
+        logger.info('Menu item deleted successfully:', { menu_item_id: req.params.id });
         return response(res, {
             statusCode: 200,
-            message: 'Menu berhasil dihapus',
+            message: 'Menu item berhasil dihapus'
         });
     } catch (error) {
         logger.error('Error deleting menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat menghapus menu',
-            errors: error.message,
+            message: 'Terjadi kesalahan saat menghapus menu item',
+            errors: error.message
+        });
+    }
+};
+
+/**
+ * Update menu item status
+ */
+const updateMenuItemStatus = async (req, res) => {
+    try {
+        logger.info('Update menu item status request:', { menu_item_id: req.params.id });
+        const { is_available } = req.body;
+        const menuItem = await MenuItem.findByPk(req.params.id);
+
+        if (!menuItem) {
+            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Menu item tidak ditemukan'
+            });
+        }
+
+        await menuItem.update({ is_available });
+
+        logger.info('Menu item status updated successfully:', { menu_item_id: menuItem.id });
+        return response(res, {
+            statusCode: 200,
+            message: 'Status menu item berhasil diperbarui',
+            data: menuItem
+        });
+    } catch (error) {
+        logger.error('Error updating menu item status:', { error: error.message, stack: error.stack });
+        return response(res, {
+            statusCode: 500,
+            message: 'Terjadi kesalahan saat memperbarui status menu item',
+            errors: error.message
         });
     }
 };
 
 module.exports = {
     getAllMenuItems,
+    getMenuItemsByStore,
     getMenuItemById,
-    getMenuItemsByStoreId,
     createMenuItem,
     updateMenuItem,
     deleteMenuItem,
+    updateMenuItemStatus
 };

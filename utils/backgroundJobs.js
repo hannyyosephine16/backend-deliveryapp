@@ -1,4 +1,4 @@
-const { DriverRequest, Driver, Order, User } = require('../models');
+const { DriverRequest, Driver, Order } = require('../models');
 const { logger } = require('./logger');
 const { Op } = require('sequelize');
 
@@ -49,7 +49,7 @@ const checkExpiredRequests = async () => {
         const expiredRequests = await DriverRequest.findAll({
             where: {
                 status: 'pending',
-                createdAt: { [Op.lt]: fifteenMinutesAgo }
+                created_at: { [Op.lt]: fifteenMinutesAgo }
             },
             include: [{
                 model: Order,

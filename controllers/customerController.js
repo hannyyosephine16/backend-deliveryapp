@@ -1,3 +1,5 @@
+'use strict';
+
 const { User } = require('../models');
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
@@ -6,9 +8,7 @@ const { saveBase64Image } = require('../utils/imageHelper');
 const { logger } = require('../utils/logger');
 
 /**
- * Mendapatkan semua customer
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all customers
  */
 const getAllCustomers = async (req, res) => {
     try {
@@ -25,9 +25,9 @@ const getAllCustomers = async (req, res) => {
             statusCode: 200,
             message: 'Berhasil mendapatkan data customer',
             data: {
-                totalItems: count,
-                totalPages: Math.ceil(count / queryOptions.limit),
-                currentPage: parseInt(req.query.page) || 1,
+                total_items: count,
+                total_pages: Math.ceil(count / queryOptions.limit),
+                current_page: parseInt(req.query.page) || 1,
                 customers,
             },
         });
@@ -42,29 +42,27 @@ const getAllCustomers = async (req, res) => {
 };
 
 /**
- * Mendapatkan customer berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get customer by ID
  */
 const getCustomerById = async (req, res) => {
     try {
-        logger.info('Get customer by ID request:', { customerId: req.params.id });
+        logger.info('Get customer by ID request:', { customer_id: req.params.id });
         const customer = await User.findOne({
             where: {
                 id: req.params.id,
-                role: 'customer', // Pastikan role adalah 'customer'
+                role: 'customer',
             },
         });
 
         if (!customer) {
-            logger.warn('Customer not found:', { customerId: req.params.id });
+            logger.warn('Customer not found:', { customer_id: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
             });
         }
 
-        logger.info('Successfully retrieved customer:', { customerId: customer.id });
+        logger.info('Successfully retrieved customer:', { customer_id: customer.id });
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data customer',
@@ -81,9 +79,7 @@ const getCustomerById = async (req, res) => {
 };
 
 /**
- * Menambahkan customer baru
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Create new customer
  */
 const createCustomer = async (req, res) => {
     try {
@@ -106,7 +102,7 @@ const createCustomer = async (req, res) => {
             avatar: imagePath
         });
 
-        logger.info('Customer created successfully:', { customerId: customer.id });
+        logger.info('Customer created successfully:', { customer_id: customer.id });
         return response(res, {
             statusCode: 201,
             message: 'Customer berhasil ditambahkan',
@@ -123,83 +119,66 @@ const createCustomer = async (req, res) => {
 };
 
 /**
- * Mengupdate customer berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Update customer
  */
 const updateCustomer = async (req, res) => {
     try {
-        logger.info('Update customer request:', { customerId: req.params.id });
-        const { id } = req.params;
-        const { name, email, password, phone, image } = req.body;
-
+        logger.info('Update customer request:', { customer_id: req.params.id });
+        const { name, email, phone, image } = req.body;
         const customer = await User.findOne({
             where: {
-                id,
-                role: 'customer', // Pastikan role adalah 'customer'
+                id: req.params.id,
+                role: 'customer',
             },
         });
 
         if (!customer) {
-            logger.warn('Customer not found for update:', { customerId: id });
+            logger.warn('Customer not found:', { customer_id: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
             });
         }
 
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            customer.password = hashedPassword;
-        }
+        const updateData = { name, email, phone };
 
-        let imagePath = null;
         if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'users', 'avatar');
+            updateData.avatar = saveBase64Image(image, 'users', 'avatar');
         }
 
-        await customer.update({
-            name,
-            email,
-            phone,
-            avatar: imagePath
-        });
+        await customer.update(updateData);
 
-        logger.info('Customer updated successfully:', { customerId: customer.id });
+        logger.info('Customer updated successfully:', { customer_id: customer.id });
         return response(res, {
             statusCode: 200,
-            message: 'Customer berhasil diupdate',
+            message: 'Customer berhasil diperbarui',
             data: customer,
         });
     } catch (error) {
         logger.error('Error updating customer:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate customer',
+            message: 'Terjadi kesalahan saat memperbarui customer',
             errors: error.message,
         });
     }
 };
 
 /**
- * Menghapus customer berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Delete customer
  */
 const deleteCustomer = async (req, res) => {
     try {
-        logger.info('Delete customer request:', { customerId: req.params.id });
-        const { id } = req.params;
-
+        logger.info('Delete customer request:', { customer_id: req.params.id });
         const customer = await User.findOne({
             where: {
-                id,
-                role: 'customer', // Pastikan role adalah 'customer'
+                id: req.params.id,
+                role: 'customer',
             },
         });
 
         if (!customer) {
-            logger.warn('Customer not found for deletion:', { customerId: id });
+            logger.warn('Customer not found:', { customer_id: req.params.id });
             return response(res, {
                 statusCode: 404,
                 message: 'Customer tidak ditemukan',
@@ -208,7 +187,7 @@ const deleteCustomer = async (req, res) => {
 
         await customer.destroy();
 
-        logger.info('Customer deleted successfully:', { customerId: id });
+        logger.info('Customer deleted successfully:', { customer_id: req.params.id });
         return response(res, {
             statusCode: 200,
             message: 'Customer berhasil dihapus',
@@ -228,5 +207,5 @@ module.exports = {
     getCustomerById,
     createCustomer,
     updateCustomer,
-    deleteCustomer,
+    deleteCustomer
 };

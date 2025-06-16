@@ -1,21 +1,28 @@
-const { User, Store } = require('../models');
+'use strict';
+
+const { Store, User } = require('../models');
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
-const haversine = require('../utils/haversine');
 const bcrypt = require('bcryptjs');
 const { saveBase64Image } = require('../utils/imageHelper');
 const { logger } = require('../utils/logger');
 
-
 /**
- * Mendapatkan semua store beserta ownernya
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get all stores
  */
 const getAllStores = async (req, res) => {
     try {
         logger.info('Get all stores request');
-        const queryOptions = getQueryOptions(req.query, [{ model: User, as: 'user' }]);
+        const queryOptions = getQueryOptions(req.query);
+
+        // Include model User dan filter berdasarkan role 'store'
+        queryOptions.include = [
+            {
+                model: User,
+                as: 'owner',
+                where: { role: 'store' },
+            }
+        ];
 
         const { count, rows: stores } = await Store.findAndCountAll(queryOptions);
 
@@ -23,12 +30,10 @@ const getAllStores = async (req, res) => {
         return response(res, {
             statusCode: 200,
             message: 'Berhasil mendapatkan data store',
-            data: {
-                totalItems: count,
-                totalPages: Math.ceil(count / queryOptions.limit),
-                currentPage: parseInt(req.query.page) || 1,
-                stores,
-            },
+            data: stores,
+            totalItems: count,
+            totalPages: Math.ceil(count / queryOptions.limit),
+            currentPage: parseInt(req.query.page) || 1,
         });
     } catch (error) {
         logger.error('Error getting stores:', { error: error.message, stack: error.stack });
@@ -41,15 +46,15 @@ const getAllStores = async (req, res) => {
 };
 
 /**
- * Mendapatkan store berdasarkan ID beserta ownernya
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Get store by ID
  */
 const getStoreById = async (req, res) => {
     try {
         logger.info('Get store by ID request:', { storeId: req.params.id });
         const store = await Store.findByPk(req.params.id, {
-            include: [{ model: User, as: 'user' }], // Include data User (owner)
+            include: [
+                { model: User, as: 'owner' },
+            ],
         });
 
         if (!store) {
@@ -77,290 +82,190 @@ const getStoreById = async (req, res) => {
 };
 
 /**
- * Membuat store baru beserta ownernya
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Create new store
  */
 const createStore = async (req, res) => {
     try {
-        logger.info('Create store request:', { email: req.body.email, storeName: req.body.storeName });
-        const { name, email, password, phone, storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
+        logger.info('Create store request:', { email: req.body.email });
+        const {
+            name,
+            email,
+            password,
+            phone,
+            address,
+            description,
+            image,
+            latitude,
+            longitude
+        } = req.body;
 
+        // Create user first
         const hashedPassword = await bcrypt.hash(password, 10);
-        // 1. Buat User (Owner) dengan role 'store'
-        const owner = await User.create({
+        const user = await User.create({
             name,
             email,
             password: hashedPassword,
             phone,
-            role: 'store', // Role sebagai store owner
+            role: 'store'
         });
 
-        // 2. Hitung jarak menggunakan Haversine method
-        const destinationLatitude = 2.38349390603264; // Koordinat IT Del
-        const destinationLongitude = 99.14866498216043;
-        const distance = haversine(latitude, longitude, destinationLatitude, destinationLongitude);
-
-        // 3. Simpan gambar jika imageUrl berupa base64
-        let imagePath = null;
+        let image_url = null;
         if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'stores', 'store');
+            image_url = saveBase64Image(image, 'stores', 'store');
         }
 
-        // 4. Buat Store dan hubungkan dengan User (Owner)
+        // Create store profile
         const store = await Store.create({
-            userId: owner.id, // Hubungkan store dengan owner
-            name: storeName,
+            user_id: user.id,
+            name,
             address,
             description,
-            openTime,
-            closeTime,
-            imageUrl: imagePath,
+            image_url,
             phone,
+            open_time: req.body.open_time || req.body.openTime,
+            close_time: req.body.close_time || req.body.closeTime,
             latitude,
             longitude,
-            distance, // Simpan jarak ke database
+            status: 'active',
+            rating: 0,
+            total_products: 0,
+            review_count: 0
         });
 
-        logger.info('Store created successfully:', { storeId: store.id, ownerId: owner.id });
+        logger.info('Store created successfully:', { storeId: store.id });
         return response(res, {
             statusCode: 201,
-            message: 'Store dan owner berhasil ditambahkan',
+            message: 'Store berhasil ditambahkan',
             data: {
-                owner,
-                store,
+                user,
+                store
             },
         });
     } catch (error) {
         logger.error('Error creating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat menambahkan store dan owner',
+            message: 'Terjadi kesalahan saat menambahkan store',
             errors: error.message,
         });
     }
 };
 
 /**
- * Mengupdate store berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Update store
  */
 const updateStore = async (req, res) => {
     try {
         logger.info('Update store request:', { storeId: req.params.id });
-        const { id } = req.params;
-        const { name, email, password, phone, storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
-
-        const store = await Store.findByPk(id, {
-            include: [{ model: User, as: 'user' }],
+        const {
+            name,
+            email,
+            phone,
+            address,
+            description,
+            image,
+            open_time,
+            close_time,
+            latitude,
+            longitude,
+            status
+        } = req.body;
+        const store = await Store.findByPk(req.params.id, {
+            include: [{ model: User, as: 'owner' }]
         });
 
         if (!store) {
-            logger.warn('Store not found for update:', { storeId: id });
-            return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
+            logger.warn('Store not found:', { storeId: req.params.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Store tidak ditemukan',
+            });
         }
 
-        // Update data User (owner)
-        await store.user.update({ name, email, phone });
+        // Update user data
+        await store.owner.update({
+            name,
+            email,
+            phone
+        });
 
-        // Update data store
-        if (password) {
-            const hashedPassword = await bcrypt.hash(password, 10);
-            store.user.password = hashedPassword;
-        }
-
-        // Jika latitude atau longitude diubah, hitung ulang jarak
-        let distance = store.distance;
-        if (latitude && longitude) {
-            const destinationLatitude = 2.38349390603264;
-            const destinationLongitude = 99.14866498216043;
-            distance = haversine(latitude, longitude, destinationLatitude, destinationLongitude);
-        }
-
-        // Simpan gambar jika imageUrl berupa base64
-        let imagePath = store.imageUrl;
-        if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'stores', 'store');
-        }
-
-        await store.update({
-            name: storeName,
+        const updateData = {
+            name,
             address,
             description,
-            openTime,
-            closeTime,
-            imageUrl: imagePath,
             phone,
+            open_time,
+            close_time,
             latitude,
             longitude,
-            distance,
-        });
+            status
+        };
+
+        if (image && image.startsWith('data:image')) {
+            updateData.image_url = saveBase64Image(image, 'stores', 'store');
+        }
+
+        await store.update(updateData);
 
         logger.info('Store updated successfully:', { storeId: store.id });
         return response(res, {
             statusCode: 200,
-            message: 'Store berhasil diupdate',
-            data: store,
+            message: 'Store berhasil diperbarui',
+            data: {
+                user: store.owner,
+                store
+            },
         });
     } catch (error) {
         logger.error('Error updating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate store',
+            message: 'Terjadi kesalahan saat memperbarui store',
             errors: error.message,
         });
     }
 };
 
 /**
- * Menghapus store berdasarkan ID
- * @param {Object} req - Request object
- * @param {Object} res - Response object
+ * Delete store
  */
 const deleteStore = async (req, res) => {
     try {
         logger.info('Delete store request:', { storeId: req.params.id });
-        const { id } = req.params;
+        const store = await Store.findByPk(req.params.id, {
+            include: [{ model: User, as: 'owner' }]
+        });
 
-        const store = await Store.findByPk(id);
         if (!store) {
-            logger.warn('Store not found for deletion:', { storeId: id });
-            return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
-        }
-
-        // Hapus juga owner (User) yang terkait dengan store
-        const owner = await User.findByPk(store.userId);
-        if (owner) {
-            await owner.destroy();
+            logger.warn('Store not found:', { storeId: req.params.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Store tidak ditemukan',
+            });
         }
 
         await store.destroy();
+        await store.owner.destroy();
 
-        logger.info('Store deleted successfully:', { storeId: id });
+        logger.info('Store deleted successfully:', { storeId: req.params.id });
         return response(res, {
             statusCode: 200,
-            message: 'Store dan owner berhasil dihapus',
+            message: 'Store berhasil dihapus',
         });
     } catch (error) {
         logger.error('Error deleting store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
-            message: 'Terjadi kesalahan saat menghapus store dan owner',
+            message: 'Terjadi kesalahan saat menghapus store',
             errors: error.message,
         });
     }
 };
 
-/**
- * Mengupdate store oleh owner yang sedang login
- * @param {Object} req - Request object
- * @param {Object} res - Response object
- */
-const updateProfileStore = async (req, res) => {
-    try {
-        logger.info('Update store profile request:', { userId: req.user.id });
-        const { id: userId } = req.user; // ID owner yang sedang login
-        const { storeName, address, description, openTime, closeTime, image, latitude, longitude } = req.body;
-
-        // Cari store yang dimiliki oleh owner yang sedang login
-        const store = await Store.findOne({
-            where: { userId },
-        });
-        if (!store) {
-            logger.warn('Store not found for profile update:', { userId });
-            return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
-        }
-
-        // Jika latitude atau longitude diubah, hitung ulang jarak
-        let distance = store.distance;
-        if (latitude && longitude) {
-            const destinationLatitude = 2.38349390603264; // Koordinat IT Del
-            const destinationLongitude = 99.14866498216043;
-            distance = haversine(latitude, longitude, destinationLatitude, destinationLongitude);
-        }
-
-        // Simpan gambar jika imageUrl berupa base64
-        let imagePath = store.imageUrl;
-        if (image && image.startsWith('data:image')) {
-            imagePath = saveBase64Image(image, 'stores', 'store');
-        }
-
-        // Update data store
-        await store.update({
-            name: storeName,
-            address,
-            description,
-            openTime,
-            closeTime,
-            imageUrl: imagePath,
-            latitude,
-            longitude,
-            distance,
-        });
-
-        logger.info('Store profile updated successfully:', { storeId: store.id });
-        return response(res, {
-            statusCode: 200,
-            message: 'Profil store berhasil diupdate',
-            data: store,
-        });
-    } catch (error) {
-        logger.error('Error updating store profile:', { error: error.message, stack: error.stack });
-        return response(res, {
-            statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate profil store',
-            errors: error.message,
-        });
-    }
-};
-
-/**
- * Mengupdate status store (hanya admin yang bisa)
- * @param {Object} req - Request object
- * @param {Object} res - Response object
- */
-const updateStoreStatus = async (req, res) => {
-    try {
-        const { id } = req.params;
-        const { status } = req.body;
-
-        // Validasi status
-        if (!['active', 'inactive'].includes(status)) {
-            return response(res, {
-                statusCode: 400,
-                message: 'Status tidak valid. Harus active atau inactive',
-            });
-        }
-
-        const store = await Store.findByPk(id);
-        if (!store) {
-            return response(res, { statusCode: 404, message: 'Store tidak ditemukan' });
-        }
-
-        await store.update({ status });
-
-        return response(res, {
-            statusCode: 200,
-            message: 'Status store berhasil diupdate',
-            data: { id: store.id, status: store.status },
-        });
-    } catch (error) {
-        return response(res, {
-            statusCode: 500,
-            message: 'Terjadi kesalahan saat mengupdate status store',
-            errors: error.message,
-        });
-    }
-};
-
-// Jangan lupa tambahkan ke module.exports
 module.exports = {
     getAllStores,
     getStoreById,
     createStore,
     updateStore,
     deleteStore,
-    updateProfileStore,
-    updateStoreStatus
 };

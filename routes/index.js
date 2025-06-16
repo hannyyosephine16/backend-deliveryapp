@@ -1,24 +1,26 @@
+'use strict';
+
 const express = require('express');
 const router = express.Router();
 
-// Import all routes
-const authRoutes = require('./authRoutes');
-const customerRoutes = require('./customerRoutes');
-const storeRoutes = require('./storeRoutes');
-const menuItemRoutes = require('./menuItemRoutes');
-const orderRoutes = require('./orderRoutes');
-const driverRoutes = require('./driverRoutes');
-const driverRequestRoutes = require('./driverRequestRoutes');
-const trackingRoutes = require('./trackingRoutes');
+// Import v1 routes
+const authRoutes = require('./v1/authRoutes');
+const userRoutes = require('./v1/userRoutes');
+const storeRoutes = require('./v1/storeRoutes');
+const driverRoutes = require('./v1/driverRoutes');
+const customerRoutes = require('./v1/customerRoutes');
+const menuRoutes = require('./v1/menuRoutes');
+const orderRoutes = require('./v1/orderRoutes');
+const healthRoutes = require('./v1/healthRoutes');
 
-// Mount routes
-router.use('/auth', authRoutes);
-router.use('/customers', customerRoutes);
-router.use('/stores', storeRoutes);
-router.use('/menu', menuItemRoutes);
-router.use('/orders', orderRoutes);
-router.use('/drivers', driverRoutes);
-router.use('/driver-requests', driverRequestRoutes);
-router.use('/tracking', trackingRoutes);
+// Mount v1 routes
+router.use('/v1/auth', authRoutes);
+router.use('/v1/users', userRoutes);
+router.use('/v1/stores', storeRoutes);
+router.use('/v1/drivers', driverRoutes);
+router.use('/v1/customers', customerRoutes);
+router.use('/v1/menu', menuRoutes);
+router.use('/v1/orders', orderRoutes);
+router.use('/v1/health', healthRoutes);
 
-module.exports = router;
+module.exports = router; 
