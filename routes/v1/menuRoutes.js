@@ -54,6 +54,8 @@ const { cache } = require('../../middleware/cache');
  *                 type: integer
  *               category:
  *                 type: string
+ *               quantity:
+ *                 type: integer
  *               isAvailable:
  *                 type: boolean
  *     responses:
@@ -132,6 +134,8 @@ router.get('/store/:store_id', protect, cache.middleware(), getMenuItemsByStore)
  *                 description: base64 image string
  *               category:
  *                 type: string
+ *               quantity:
+ *                 type: integer
  *               isAvailable:
  *                 type: boolean
  *     responses:

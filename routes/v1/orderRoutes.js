@@ -43,7 +43,7 @@ const maybeTrackingLimiter = process.env.NODE_ENV === 'development' ? (req, res,
  *                 type: array
  *                 items:
  *                   type: object
- *                   required: [menu_item_id, quantity, price]
+ *                   required: [menu_item_id, quantity, notes]
  *                   properties:
  *                     menu_item_id:
  *                       type: integer
@@ -51,12 +51,6 @@ const maybeTrackingLimiter = process.env.NODE_ENV === 'development' ? (req, res,
  *                       type: integer
  *                     price:
  *                       type: number
- *                     notes:
- *                       type: string
- *               deliveryAddress:
- *                 type: string
- *               deliveryFee:
- *                 type: number
  *     responses:
  *       201:
  *         description: Order created
@@ -164,12 +158,22 @@ router.patch('/:id/status', protect, restrictTo('store'), updateOrderStatus);
  *         application/json:
  *           schema:
  *             type: object
- *             required: [rating, comment]
+ *             required: [order_review, driver_review]
  *             properties:
- *               rating:
- *                 type: number
- *               comment:
- *                 type: string
+ *               order_review:
+ *                 type: object
+ *                 properties:
+ *                   rating:
+ *                     type: number
+ *                   comment:
+ *                     type: string
+ *               driver_review:
+ *                 type: object
+ *                 properties:
+ *                   rating:
+ *                     type: number
+ *                   comment:
+ *                     type: string
  *     responses:
  *       201:
  *         description: Review created

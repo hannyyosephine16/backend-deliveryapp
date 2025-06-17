@@ -1,6 +1,6 @@
 'use strict';
 
-const { Driver, User, Order } = require('../models');
+const { Driver, User, Order, sequelize } = require('../models');
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const bcrypt = require('bcryptjs');
@@ -86,7 +86,9 @@ const getDriverById = async (req, res) => {
  * Create new driver
  */
 const createDriver = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Create driver request:', {
             email: req.body.email,
             name: req.body.name,
@@ -94,6 +96,7 @@ const createDriver = async (req, res) => {
             license_number: req.body.license_number,
             vehicle_plate: req.body.vehicle_plate
         });
+
         const {
             name,
             email,
@@ -112,13 +115,6 @@ const createDriver = async (req, res) => {
 
         // Create user first
         const hashedPassword = await bcrypt.hash(password, 10);
-        logger.info('Creating user with data:', {
-            name,
-            email,
-            phone,
-            role: 'driver',
-            avatar: avatarPath
-        });
         const user = await User.create({
             name,
             email,
@@ -126,15 +122,9 @@ const createDriver = async (req, res) => {
             phone,
             role: 'driver',
             avatar: avatarPath,
-        });
+        }, { transaction });
 
         // Create driver profile
-        logger.info('Creating driver profile with data:', {
-            user_id: user.id,
-            license_number,
-            vehicle_plate,
-            status: 'active'
-        });
         const driver = await Driver.create({
             user_id: user.id,
             license_number,
@@ -142,7 +132,9 @@ const createDriver = async (req, res) => {
             status: 'active',
             rating: 5.00,
             reviews_count: 0
-        });
+        }, { transaction });
+
+        await transaction.commit();
 
         logger.info('Driver created successfully:', { driverId: driver.id });
         return response(res, {
@@ -151,24 +143,15 @@ const createDriver = async (req, res) => {
             data: {
                 user,
                 driver
-            },
+            }
         });
     } catch (error) {
-        logger.error('Error creating driver:', {
-            error: error.message,
-            stack: error.stack,
-            name: error.name,
-            errors: error.errors ? error.errors.map(e => ({
-                message: e.message,
-                type: e.type,
-                path: e.path,
-                value: e.value
-            })) : undefined
-        });
+        if (transaction) await transaction.rollback();
+        logger.error('Error creating driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menambahkan driver',
-            errors: error.errors ? error.errors.map(e => e.message).join(', ') : error.message,
+            errors: error.message
         });
     }
 };
@@ -177,8 +160,11 @@ const createDriver = async (req, res) => {
  * Update driver
  */
 const updateDriver = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Update driver request:', { driverId: req.params.id });
+
         const {
             name,
             email,
@@ -188,15 +174,18 @@ const updateDriver = async (req, res) => {
             status,
             avatar
         } = req.body;
+
         const driver = await Driver.findByPk(req.params.id, {
-            include: [{ model: User, as: 'user' }]
+            include: [{ model: User, as: 'user' }],
+            transaction
         });
 
         if (!driver) {
+            await transaction.rollback();
             logger.warn('Driver not found:', { driverId: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Driver tidak ditemukan',
+                message: 'Driver tidak ditemukan'
             });
         }
 
@@ -212,7 +201,7 @@ const updateDriver = async (req, res) => {
             email,
             phone,
             avatar: avatarPath,
-        });
+        }, { transaction });
 
         const updateData = {
             license_number,
@@ -220,7 +209,9 @@ const updateDriver = async (req, res) => {
             status
         };
 
-        await driver.update(updateData);
+        await driver.update(updateData, { transaction });
+
+        await transaction.commit();
 
         logger.info('Driver updated successfully:', { driverId: driver.id });
         return response(res, {
@@ -229,14 +220,15 @@ const updateDriver = async (req, res) => {
             data: {
                 user: driver.user,
                 driver
-            },
+            }
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error updating driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memperbarui driver',
-            errors: error.message,
+            errors: error.message
         });
     }
 };
@@ -245,36 +237,44 @@ const updateDriver = async (req, res) => {
  * Delete driver
  */
 const deleteDriver = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Delete driver request:', { driverId: req.params.id });
+
         const driver = await Driver.findByPk(req.params.id, {
-            include: [{ model: User, as: 'user' }]
+            include: [{ model: User, as: 'user' }],
+            transaction
         });
 
         if (!driver) {
+            await transaction.rollback();
             logger.warn('Driver not found:', { driverId: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Driver tidak ditemukan',
+                message: 'Driver tidak ditemukan'
             });
         }
 
         // Delete driver profile first
-        await driver.destroy();
+        await driver.destroy({ transaction });
         // Then delete user account
-        await driver.user.destroy();
+        await driver.user.destroy({ transaction });
+
+        await transaction.commit();
 
         logger.info('Driver deleted successfully:', { driverId: req.params.id });
         return response(res, {
             statusCode: 200,
-            message: 'Driver berhasil dihapus',
+            message: 'Driver berhasil dihapus'
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error deleting driver:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menghapus driver',
-            errors: error.message,
+            errors: error.message
         });
     }
 };
@@ -365,18 +365,23 @@ const updateDriverStatus = async (req, res) => {
  * Update driver profile
  */
 const updateProfileDriver = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Update driver profile request:', { driverId: req.params.id });
+
         const { name, email, phone, license_number, vehicle_plate } = req.body;
         const driver = await Driver.findByPk(req.params.id, {
-            include: [{ model: User, as: 'user' }]
+            include: [{ model: User, as: 'user' }],
+            transaction
         });
 
         if (!driver) {
+            await transaction.rollback();
             logger.warn('Driver not found:', { driverId: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Driver tidak ditemukan',
+                message: 'Driver tidak ditemukan'
             });
         }
 
@@ -385,14 +390,16 @@ const updateProfileDriver = async (req, res) => {
             name,
             email,
             phone
-        });
+        }, { transaction });
 
         const updateData = {
             license_number,
             vehicle_plate
         };
 
-        await driver.update(updateData);
+        await driver.update(updateData, { transaction });
+
+        await transaction.commit();
 
         logger.info('Driver profile updated successfully:', { driverId: driver.id });
         return response(res, {
@@ -401,14 +408,15 @@ const updateProfileDriver = async (req, res) => {
             data: {
                 user: driver.user,
                 driver
-            },
+            }
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error updating driver profile:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memperbarui profil driver',
-            errors: error.message,
+            errors: error.message
         });
     }
 };

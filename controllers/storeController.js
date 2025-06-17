@@ -1,6 +1,6 @@
 'use strict';
 
-const { Store, User } = require('../models');
+const { Store, User, sequelize } = require('../models');
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const bcrypt = require('bcryptjs');
@@ -82,11 +82,14 @@ const getStoreById = async (req, res) => {
 };
 
 /**
- * Create new store
+ * Create store
  */
 const createStore = async (req, res) => {
+    let transaction;
     try {
-        logger.info('Create store request:', { email: req.body.email });
+        transaction = await sequelize.transaction();
+        logger.info('Create store request');
+
         const {
             name,
             email,
@@ -95,11 +98,13 @@ const createStore = async (req, res) => {
             address,
             description,
             image,
+            open_time,
+            close_time,
             latitude,
             longitude
         } = req.body;
 
-        // Create user first
+        // Create user account first
         const hashedPassword = await bcrypt.hash(password, 10);
         const user = await User.create({
             name,
@@ -107,7 +112,7 @@ const createStore = async (req, res) => {
             password: hashedPassword,
             phone,
             role: 'store'
-        });
+        }, { transaction });
 
         let image_url = null;
         if (image && image.startsWith('data:image')) {
@@ -120,17 +125,19 @@ const createStore = async (req, res) => {
             name,
             address,
             description,
-            image_url,
             phone,
-            open_time: req.body.open_time || req.body.openTime,
-            close_time: req.body.close_time || req.body.closeTime,
+            open_time,
+            close_time,
+            image_url,
             latitude,
             longitude,
             status: 'active',
-            rating: 0,
             total_products: 0,
+            rating: 0,
             review_count: 0
-        });
+        }, { transaction });
+
+        await transaction.commit();
 
         logger.info('Store created successfully:', { storeId: store.id });
         return response(res, {
@@ -139,14 +146,15 @@ const createStore = async (req, res) => {
             data: {
                 user,
                 store
-            },
+            }
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error creating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menambahkan store',
-            errors: error.message,
+            errors: error.message
         });
     }
 };
@@ -155,8 +163,11 @@ const createStore = async (req, res) => {
  * Update store
  */
 const updateStore = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Update store request:', { storeId: req.params.id });
+
         const {
             name,
             email,
@@ -170,24 +181,27 @@ const updateStore = async (req, res) => {
             longitude,
             status
         } = req.body;
+
         const store = await Store.findByPk(req.params.id, {
-            include: [{ model: User, as: 'owner' }]
+            include: [{ model: User, as: 'user' }],
+            transaction
         });
 
         if (!store) {
+            await transaction.rollback();
             logger.warn('Store not found:', { storeId: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Store tidak ditemukan',
+                message: 'Store tidak ditemukan'
             });
         }
 
         // Update user data
-        await store.owner.update({
+        await store.user.update({
             name,
             email,
             phone
-        });
+        }, { transaction });
 
         const updateData = {
             name,
@@ -205,23 +219,26 @@ const updateStore = async (req, res) => {
             updateData.image_url = saveBase64Image(image, 'stores', 'store');
         }
 
-        await store.update(updateData);
+        await store.update(updateData, { transaction });
+
+        await transaction.commit();
 
         logger.info('Store updated successfully:', { storeId: store.id });
         return response(res, {
             statusCode: 200,
             message: 'Store berhasil diperbarui',
             data: {
-                user: store.owner,
+                user: store.user,
                 store
-            },
+            }
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error updating store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memperbarui store',
-            errors: error.message,
+            errors: error.message
         });
     }
 };
@@ -230,34 +247,44 @@ const updateStore = async (req, res) => {
  * Delete store
  */
 const deleteStore = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Delete store request:', { storeId: req.params.id });
+
         const store = await Store.findByPk(req.params.id, {
-            include: [{ model: User, as: 'owner' }]
+            include: [{ model: User, as: 'user' }],
+            transaction
         });
 
         if (!store) {
+            await transaction.rollback();
             logger.warn('Store not found:', { storeId: req.params.id });
             return response(res, {
                 statusCode: 404,
-                message: 'Store tidak ditemukan',
+                message: 'Store tidak ditemukan'
             });
         }
 
-        await store.destroy();
-        await store.owner.destroy();
+        // Delete store profile first
+        await store.destroy({ transaction });
+        // Then delete user account
+        await store.user.destroy({ transaction });
+
+        await transaction.commit();
 
         logger.info('Store deleted successfully:', { storeId: req.params.id });
         return response(res, {
             statusCode: 200,
-            message: 'Store berhasil dihapus',
+            message: 'Store berhasil dihapus'
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error deleting store:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat menghapus store',
-            errors: error.message,
+            errors: error.message
         });
     }
 };

@@ -1,9 +1,43 @@
 'use strict';
 
-const { MenuItem, Store } = require('../models');
+const { MenuItem, Store, User, sequelize } = require('../models');
 const response = require('../utils/response');
 const { saveBase64Image } = require('../utils/imageHelper');
 const { logger } = require('../utils/logger');
+
+/**
+ * Helper function to get store by user ID
+ */
+const getStoreByUserId = async (userId) => {
+    const store = await Store.findOne({
+        where: { user_id: userId },
+        include: [{ model: User, as: 'user' }]
+    });
+    return store;
+};
+
+/**
+ * Helper function to update store's total products
+ */
+const updateStoreTotalProducts = async (storeId, transaction = null) => {
+    const totalProducts = await MenuItem.count({
+        where: {
+            store_id: storeId,
+            is_available: true
+        },
+        transaction
+    });
+
+    await Store.update(
+        { total_products: totalProducts },
+        {
+            where: { id: storeId },
+            transaction
+        }
+    );
+
+    return totalProducts;
+};
 
 /**
  * Get all menu items
@@ -108,9 +142,20 @@ const getMenuItemById = async (req, res) => {
  * Create menu item
  */
 const createMenuItem = async (req, res) => {
+    let transaction;
     try {
-        logger.info('Create menu item request:', { store_id: req.body.store_id });
-        const { name, price, description, store_id, category, is_available } = req.body;
+        transaction = await sequelize.transaction();
+
+        // Get store from logged in user
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
+            return response(res, {
+                statusCode: 404,
+                message: 'Toko tidak ditemukan untuk user ini'
+            });
+        }
+
+        const { name, price, description, category, is_available, quantity } = req.body;
 
         let image_url = null;
         if (req.body.image && req.body.image.startsWith('data:image')) {
@@ -121,11 +166,17 @@ const createMenuItem = async (req, res) => {
             name,
             price,
             description,
-            image: image_url,
-            store_id,
+            image_url,
             category,
-            is_available: is_available ?? true
-        });
+            is_available: is_available ?? true,
+            quantity,
+            store_id: store.id
+        }, { transaction });
+
+        // Update store's total products count
+        await updateStoreTotalProducts(store.id, transaction);
+
+        await transaction.commit();
 
         logger.info('Menu item created successfully:', { menu_item_id: menuItem.id });
         return response(res, {
@@ -134,6 +185,7 @@ const createMenuItem = async (req, res) => {
             data: menuItem
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error creating menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
@@ -147,16 +199,34 @@ const createMenuItem = async (req, res) => {
  * Update menu item
  */
 const updateMenuItem = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Update menu item request:', { menu_item_id: req.params.id });
-        const { name, price, description, category, is_available } = req.body;
-        const menuItem = await MenuItem.findByPk(req.params.id);
 
-        if (!menuItem) {
-            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
+        // Get store from logged in user
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
             return response(res, {
                 statusCode: 404,
-                message: 'Menu item tidak ditemukan'
+                message: 'Toko tidak ditemukan untuk user ini'
+            });
+        }
+
+        const { name, price, description, category, is_available, quantity } = req.body;
+        const menuItem = await MenuItem.findOne({
+            where: {
+                id: req.params.id,
+                store_id: store.id
+            },
+            transaction
+        });
+
+        if (!menuItem) {
+            logger.warn('Menu item not found or not owned by store:', { menu_item_id: req.params.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Menu item tidak ditemukan atau bukan milik toko Anda'
             });
         }
 
@@ -165,14 +235,22 @@ const updateMenuItem = async (req, res) => {
             price,
             description,
             category,
-            is_available
+            is_available,
+            quantity
         };
 
         if (req.body.image && req.body.image.startsWith('data:image')) {
-            updateData.image = saveBase64Image(req.body.image, 'menu-items', 'item');
+            updateData.image_url = saveBase64Image(req.body.image, 'menu-items', 'item');
         }
 
-        await menuItem.update(updateData);
+        await menuItem.update(updateData, { transaction });
+
+        // Update store's total products count if availability changed
+        if (menuItem.is_available !== is_available) {
+            await updateStoreTotalProducts(store.id, transaction);
+        }
+
+        await transaction.commit();
 
         logger.info('Menu item updated successfully:', { menu_item_id: menuItem.id });
         return response(res, {
@@ -181,6 +259,7 @@ const updateMenuItem = async (req, res) => {
             data: menuItem
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error updating menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
@@ -194,19 +273,44 @@ const updateMenuItem = async (req, res) => {
  * Delete menu item
  */
 const deleteMenuItem = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Delete menu item request:', { menu_item_id: req.params.id });
-        const menuItem = await MenuItem.findByPk(req.params.id);
 
-        if (!menuItem) {
-            logger.warn('Menu item not found:', { menu_item_id: req.params.id });
+        // Get store from logged in user
+        const store = await getStoreByUserId(req.user.id);
+        if (!store) {
             return response(res, {
                 statusCode: 404,
-                message: 'Menu item tidak ditemukan'
+                message: 'Toko tidak ditemukan untuk user ini'
             });
         }
 
-        await menuItem.destroy();
+        const menuItem = await MenuItem.findOne({
+            where: {
+                id: req.params.id,
+                store_id: store.id
+            },
+            transaction
+        });
+
+        if (!menuItem) {
+            logger.warn('Menu item not found or not owned by store:', { menu_item_id: req.params.id });
+            return response(res, {
+                statusCode: 404,
+                message: 'Menu item tidak ditemukan atau bukan milik toko Anda'
+            });
+        }
+
+        await menuItem.destroy({ transaction });
+
+        // Update store's total products count
+        if (menuItem.is_available) {
+            await updateStoreTotalProducts(store.id, transaction);
+        }
+
+        await transaction.commit();
 
         logger.info('Menu item deleted successfully:', { menu_item_id: req.params.id });
         return response(res, {
@@ -214,6 +318,7 @@ const deleteMenuItem = async (req, res) => {
             message: 'Menu item berhasil dihapus'
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error deleting menu item:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,

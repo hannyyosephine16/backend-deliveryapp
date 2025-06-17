@@ -92,7 +92,7 @@ const schemas = {
             longitude: Joi.number().min(-180).max(180).required().messages(messages),
         }),
         respondRequest: Joi.object({
-            status: Joi.string().valid('accepted', 'rejected').required().messages(messages),
+            action: Joi.string().valid('accept', 'reject').required().messages(messages),
         })
     },
 
@@ -117,8 +117,6 @@ const schemas = {
     order: {
         create: Joi.object({
             store_id: Joi.number().integer().required().messages(messages),
-            destination_latitude: Joi.number().min(-90).max(90).required().messages(messages),
-            destination_longitude: Joi.number().min(-180).max(180).required().messages(messages),
             items: Joi.array().items(
                 Joi.object({
                     menu_item_id: Joi.number().integer().required().messages(messages),
@@ -145,7 +143,6 @@ const schemas = {
 
     orderReview: {
         create: Joi.object({
-            orderId: Joi.number().integer().required().messages(messages),
             rating: Joi.number().integer().min(1).max(5).required().messages(messages),
             comment: Joi.string().allow('').messages(messages)
         })
@@ -153,9 +150,6 @@ const schemas = {
 
     driverReview: {
         create: Joi.object({
-            driverId: Joi.number().integer().required().messages(messages),
-            userId: Joi.number().integer().required().messages(messages),
-            orderId: Joi.number().integer().required().messages(messages),
             rating: Joi.number().integer().min(1).max(5).required().messages(messages),
             comment: Joi.string().allow('').messages(messages)
         })
@@ -167,15 +161,18 @@ const schemas = {
             price: Joi.number().min(0).required().messages(messages),
             description: Joi.string().allow('').messages(messages),
             image: Joi.string().uri().messages(messages),
-            storeId: Joi.number().integer().required().messages(messages),
-            quantity: Joi.number().integer().min(0).messages(messages)
+            quantity: Joi.number().integer().min(0).messages(messages),
+            isAvailable: Joi.boolean().required().messages(messages),
+            category: Joi.string().required().messages(messages)
         }),
         update: Joi.object({
             name: Joi.string().min(3).max(100).messages(messages),
             price: Joi.number().min(0).messages(messages),
             description: Joi.string().allow('').messages(messages),
             image: Joi.string().uri().messages(messages),
-            quantity: Joi.number().integer().min(0).messages(messages)
+            quantity: Joi.number().integer().min(0).messages(messages),
+            isAvailable: Joi.boolean().messages(messages),
+            category: Joi.string().messages(messages)
         }),
         updateStatus: Joi.object({
             isAvailable: Joi.boolean().required().messages(messages)

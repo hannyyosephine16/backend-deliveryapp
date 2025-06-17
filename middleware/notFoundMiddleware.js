@@ -9,7 +9,10 @@ const { logger } = require('../utils/logger');
  */
 const notFoundHandler = (req, res, next) => {
     logger.warn(`Route not found: ${req.method} ${req.originalUrl}`);
-    return response.error(res, `Route ${req.method} ${req.originalUrl} not found`, 404);
+    return response(res, {
+        statusCode: 404,
+        message: `Route ${req.method} ${req.originalUrl} not found`,
+    });
 };
 
 module.exports = notFoundHandler; 

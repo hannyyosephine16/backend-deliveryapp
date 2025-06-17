@@ -34,9 +34,9 @@ module.exports = (sequelize, DataTypes) => {
                 allowNull: false,
             },
             status: {
-                type: DataTypes.ENUM('pending', 'accepted', 'rejected', 'completed'),
+                type: DataTypes.ENUM('pending', 'accepted', 'rejected', 'completed', 'expired'),
                 allowNull: false,
-                defaultValue: 'pending', // Status: pending, accepted, rejected, completed
+                defaultValue: 'pending', // Status: pending, accepted, rejected, completed, expired
             },
             estimated_pickup_time: {
                 type: DataTypes.DATE,

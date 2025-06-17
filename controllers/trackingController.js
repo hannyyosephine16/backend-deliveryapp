@@ -25,7 +25,7 @@ const getTrackingData = async (req, res) => {
                 },
                 {
                     model: DriverRequest,
-                    as: 'driver_requests',
+                    as: 'driverRequests',
                     where: { status: 'accepted' },
                     required: false
                 },
@@ -118,7 +118,7 @@ const startDelivery = async (req, res) => {
             include: [
                 {
                     model: DriverRequest,
-                    as: 'driver_requests',
+                    as: 'driverRequests',
                     where: { status: 'accepted', driver_id },
                     required: true
                 },
@@ -184,7 +184,15 @@ const startDelivery = async (req, res) => {
         const updated_order = await Order.findByPk(id, {
             include: [
                 { model: User, as: 'customer', attributes: ['name'] },
-                { model: User, as: 'driver', attributes: ['name'] }
+                {
+                    model: Driver,
+                    as: 'driver',
+                    include: [{
+                        model: User,
+                        as: 'user',
+                        attributes: ['name']
+                    }]
+                }
             ]
         });
 
@@ -284,7 +292,7 @@ const completeDelivery = async (req, res) => {
             include: [
                 {
                     model: DriverRequest,
-                    as: 'driver_requests',
+                    as: 'driverRequests',
                     where: { status: 'accepted', driver_id },
                     required: true
                 }
@@ -378,7 +386,15 @@ const completeDelivery = async (req, res) => {
         const updated_order = await Order.findByPk(id, {
             include: [
                 { model: User, as: 'customer', attributes: ['name'] },
-                { model: User, as: 'driver', attributes: ['name'] }
+                {
+                    model: Driver,
+                    as: 'driver',
+                    include: [{
+                        model: User,
+                        as: 'user',
+                        attributes: ['name']
+                    }]
+                }
             ]
         });
 

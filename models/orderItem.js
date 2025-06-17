@@ -38,10 +38,6 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.STRING,
         allowNull: false
       },
-      is_available: {
-        type: DataTypes.BOOLEAN,
-        defaultValue: true
-      },
       quantity: {
         type: DataTypes.INTEGER,
         allowNull: false,

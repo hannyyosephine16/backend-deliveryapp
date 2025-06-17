@@ -634,17 +634,27 @@ const processOrderByStore = async (req, res) => {
     }
 };
 
-
 /**
  * Mengupdate status order berdasarkan ID.
  */
 const updateOrderStatus = async (req, res) => {
+    let transaction;
     try {
+        transaction = await sequelize.transaction();
         logger.info('Update order status request:', { order_id: req.params.id });
+
         const { order_status, delivery_status, estimated_pickup_time, estimated_delivery_time } = req.body;
-        const order = await Order.findByPk(req.params.id);
+        const order = await Order.findByPk(req.params.id, {
+            include: [
+                { model: OrderItem, as: 'items' },
+                { model: Store, as: 'store' },
+                { model: User, as: 'customer' }
+            ],
+            transaction
+        });
 
         if (!order) {
+            await transaction.rollback();
             logger.warn('Order not found:', { order_id: req.params.id });
             return response(res, {
                 statusCode: 404,
@@ -672,7 +682,66 @@ const updateOrderStatus = async (req, res) => {
             updateData.actual_delivery_time = new Date();
         }
 
-        await order.update(updateData);
+        // If order is cancelled, return items to inventory
+        if (order_status === 'cancelled' && order.order_status !== 'cancelled') {
+            for (const orderItem of order.items) {
+                const menuItem = await MenuItem.findOne({
+                    where: {
+                        store_id: order.store_id,
+                        name: orderItem.name
+                    },
+                    transaction
+                });
+
+                if (menuItem) {
+                    await menuItem.update({
+                        quantity: menuItem.quantity + orderItem.quantity
+                    }, { transaction });
+                }
+            }
+        }
+
+        await order.update(updateData, { transaction });
+
+        // Send notifications based on status changes
+        if (order.customer && order.customer.fcm_token) {
+            let notificationTitle = '';
+            let notificationBody = '';
+
+            switch (order_status) {
+                case 'confirmed':
+                    notificationTitle = 'Pesanan Dikonfirmasi';
+                    notificationBody = 'Pesanan Anda telah dikonfirmasi oleh toko.';
+                    break;
+                case 'preparing':
+                    notificationTitle = 'Pesanan Sedang Diproses';
+                    notificationBody = 'Pesanan Anda sedang diproses oleh toko.';
+                    break;
+                case 'ready_for_pickup':
+                    notificationTitle = 'Pesanan Siap Diambil';
+                    notificationBody = 'Pesanan Anda siap untuk diambil oleh driver.';
+                    break;
+                case 'delivered':
+                    notificationTitle = 'Pesanan Selesai';
+                    notificationBody = 'Pesanan Anda telah selesai diantar.';
+                    break;
+                case 'cancelled':
+                    notificationTitle = 'Pesanan Dibatalkan';
+                    notificationBody = 'Pesanan Anda telah dibatalkan.';
+                    break;
+            }
+
+            if (notificationTitle && notificationBody) {
+                await sendNotification(
+                    order.customer.fcm_token,
+                    notificationTitle,
+                    notificationBody,
+                    { order_id: order.id }
+                );
+            }
+        }
+
+        await transaction.commit();
 
         logger.info('Order status updated successfully:', { order_id: order.id });
         return response(res, {
@@ -681,6 +750,7 @@ const updateOrderStatus = async (req, res) => {
             data: order
         });
     } catch (error) {
+        if (transaction) await transaction.rollback();
         logger.error('Error updating order status:', { error: error.message, stack: error.stack });
         return response(res, {
             statusCode: 500,
@@ -725,7 +795,10 @@ const cancelOrderRequest = async (req, res) => {
 const createReview = async (req, res) => {
     try {
         const { id: user_id } = req.user;
-        const { order_id, store, driver } = req.body;
+        const order_id = req.params.id;
+        const { order_review, driver_review } = req.body;
+        let storeData = null;
+        let driverData = null;
 
         // Cek apakah order sudah selesai.
         const order = await Order.findOne({
@@ -740,7 +813,7 @@ const createReview = async (req, res) => {
 
         // Cek apakah review sudah ada untuk order ini.
         const existingOrderReview = await OrderReview.findOne({
-            where: { order_id: order_id, user_id: user_id },
+            where: { order_id: order_id, customer_id: user_id },
         });
 
         if (existingOrderReview) {
@@ -751,17 +824,17 @@ const createReview = async (req, res) => {
         }
 
         // Review untuk store.
-        if (store?.rating && order.store_id) {
+        if (order_review?.rating && order.store_id) {
             await OrderReview.create({
                 order_id: order_id,
-                user_id: user_id,
-                rating: store.rating,
-                comment: store.comment || null,
+                customer_id: user_id,
+                rating: order_review.rating,
+                comment: order_review.comment || null,
             });
 
-            const storeData = await Store.findByPk(order.store_id);
+            storeData = await Store.findByPk(order.store_id);
             if (storeData) {
-                const totalRating = storeData.rating * storeData.review_count + store.rating;
+                const totalRating = storeData.rating * storeData.review_count + order_review.rating;
                 const newReviewCount = storeData.review_count + 1;
                 const newRating = totalRating / newReviewCount;
 
@@ -773,17 +846,18 @@ const createReview = async (req, res) => {
         }
 
         // Review untuk driver.
-        if (driver?.rating && order.driver_id) {
+        if (driver_review?.rating && order.driver_id) {
             await DriverReview.create({
+                order_id: order_id,
                 driver_id: order.driver_id,
-                user_id: user_id,
-                rating: driver.rating,
-                comment: driver.comment || null,
+                customer_id: user_id,
+                rating: driver_review.rating,
+                comment: driver_review.comment || null,
             });
 
-            const driverData = await Driver.findByPk(order.driver_id);
+            driverData = await Driver.findByPk(order.driver_id);
             if (driverData) {
-                const totalRating = driverData.rating * driverData.reviews_count + driver.rating;
+                const totalRating = driverData.rating * driverData.reviews_count + driver_review.rating;
                 const newReviewsCount = driverData.reviews_count + 1;
                 const newRating = totalRating / newReviewsCount;
 
@@ -797,6 +871,19 @@ const createReview = async (req, res) => {
         return response(res, {
             statusCode: 201,
             message: 'Review berhasil dibuat',
+            data: {
+                order_id,
+                order_review: order_review ? {
+                    rating: order_review.rating,
+                    comment: order_review.comment || null
+                } : null,
+                driver_review: driver_review ? {
+                    rating: driver_review.rating,
+                    comment: driver_review.comment || null
+                } : null,
+                store_rating: storeData ? storeData.rating : null,
+                driver_rating: driverData ? driverData.rating : null
+            }
         });
     } catch (error) {
         return response(res, {

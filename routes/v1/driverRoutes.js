@@ -14,7 +14,6 @@ const {
     updateDriverStatus,
     updateDriverLocation,
 } = require('../../controllers/driverController');
-const driverRequestController = require('../../controllers/driverRequestController');
 const { requestLogger } = require('../../middleware/requestMiddleware');
 
 /**
@@ -202,76 +201,5 @@ router.patch('/:id/status', protect, restrictTo('admin'), updateDriverStatus);
  *         description: Location updated
  */
 router.patch('/:id/location', protect, restrictTo('driver'), updateDriverLocation);
-
-/**
- * @swagger
- * /drivers/requests:
- *   get:
- *     summary: Get driver requests
- *     tags: [Drivers]
- *     security:
- *       - bearerAuth: []
- *     responses:
- *       200:
- *         description: List of driver requests
- */
-router.get('/requests', protect, restrictTo('driver'), driverRequestController.getDriverRequests);
-
-/**
- * @swagger
- * /drivers/requests/{id}:
- *   get:
- *     summary: Get driver request detail
- *     tags: [Drivers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Driver request detail
- */
-router.get('/requests/:id', protect, restrictTo('driver'), driverRequestController.getDriverRequestDetail);
-
-/**
- * @swagger
- * /drivers/requests/{id}/respond:
- *   post:
- *     summary: Respond to driver request
- *     tags: [Drivers]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [status]
- *             properties:
- *               status:
- *                 type: string
- *                 enum: [accepted, rejected]
- *               estimatedPickupTime:
- *                 type: string
- *                 format: date-time
- *               estimatedDeliveryTime:
- *                 type: string
- *                 format: date-time
- *     responses:
- *       200:
- *         description: Responded to driver request
- */
-router.post('/requests/:id/respond', protect, restrictTo('driver'), validate(schemas.driver.respondRequest), driverRequestController.respondToDriverRequest);
 
 module.exports = router; 
