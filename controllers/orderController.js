@@ -581,9 +581,9 @@ const processOrderByStore = async (req, res) => {
                 await transaction.commit();
 
                 // Kirim notifikasi ke store jika ada fcm_token
-                if (order.store && order.store.user && order.store.user.fcm_token) {
+                if (order.store && order.store.owner && order.store.owner.fcm_token) {
                     await sendNotification(
-                        order.store.user.fcm_token,
+                        order.store.owner.fcm_token,
                         'Order Baru Masuk',
                         'Ada pesanan baru yang perlu diproses.',
                         { order_id: order.id }
@@ -903,7 +903,7 @@ const getOrderById = async (req, res) => {
         const order = await Order.findByPk(req.params.id, {
             include: [
                 { model: User, as: 'customer', attributes: ['id', 'name', 'phone'] },
-                { model: Store, as: 'store', include: [{ model: User, as: 'user', attributes: ['id', 'name'] }] },
+                { model: Store, as: 'store', include: [{ model: User, as: 'owner', attributes: ['id', 'name'] }] },
                 { model: Driver, as: 'driver', include: [{ model: User, as: 'user', attributes: ['id', 'name'] }] },
                 { model: OrderItem, as: 'items', include: [{ model: MenuItem, as: 'menuItem' }] }
             ]

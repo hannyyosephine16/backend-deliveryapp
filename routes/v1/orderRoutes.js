@@ -81,7 +81,7 @@ router.get('/:id', protect, cache.middleware(), getOrderById);
 
 /**
  * @swagger
- * /orders/customer/orders:
+ * /orders/customer:
  *   get:
  *     summary: Get orders for current customer
  *     tags: [Orders]
@@ -91,11 +91,11 @@ router.get('/:id', protect, cache.middleware(), getOrderById);
  *       200:
  *         description: List of customer orders
  */
-router.get('/customer/orders', protect, restrictTo('customer'), cache.middleware(), getOrdersByUser);
+router.get('/customer', protect, restrictTo('customer'), cache.middleware(), getOrdersByUser);
 
 /**
  * @swagger
- * /orders/store/orders:
+ * /orders/store:
  *   get:
  *     summary: Get orders for current store
  *     tags: [Orders]
@@ -105,7 +105,7 @@ router.get('/customer/orders', protect, restrictTo('customer'), cache.middleware
  *       200:
  *         description: List of store orders
  */
-router.get('/store/orders', protect, restrictTo('store'), cache.middleware(), getOrdersByStore);
+router.get('/store', protect, restrictTo('store'), cache.middleware(), getOrdersByStore);
 
 /**
  * @swagger
