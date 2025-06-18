@@ -33,36 +33,37 @@ module.exports = (sequelize, DataTypes) => {
       allowNull: false
     },
     role: {
-      type: DataTypes.ENUM('customer', 'driver', 'admin'),
-      defaultValue: 'customer'
+      type: DataTypes.ENUM('admin', 'customer', 'store', 'driver'),
+      allowNull: false
     },
     phone: {
       type: DataTypes.STRING,
-      allowNull: true
-    },
-    address: {
-      type: DataTypes.TEXT,
       allowNull: true
     },
     fcm_token: {
       type: DataTypes.STRING,
       allowNull: true
     },
+    avatar: {
+      type: DataTypes.STRING,
+      allowNull: true
+    },
     created_at: {
       type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
+      allowNull: false
     },
     updated_at: {
       type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
+      allowNull: false
     }
   }, {
     sequelize,
     modelName: 'User',
     tableName: 'users',
-    timestamps: false
+    underscored: true,
+    timestamps: true,
+    createdAt: 'created_at',
+    updatedAt: 'updated_at'
   });
   return User;
 };

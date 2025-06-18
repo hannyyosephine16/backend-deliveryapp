@@ -42,7 +42,8 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         logger.info('Update profile request:', { user_id: req.user.id });
-        const { name, email, phone, avatar, address } = req.body;
+        const { name, email, phone, avatar } = req.body;
+
         const user = await User.findByPk(req.user.id);
 
         if (!user) {
@@ -50,15 +51,34 @@ const updateProfile = async (req, res) => {
             return response(res, { statusCode: 404, message: 'User tidak ditemukan' });
         }
 
+        // Check if email is being changed and if it's already taken
+        if (email && email !== user.email) {
+            const existingUser = await User.findOne({ where: { email } });
+            if (existingUser) {
+                return response(res, {
+                    statusCode: 400,
+                    message: 'Email sudah digunakan'
+                });
+            }
+        }
+
         const updateData = {
-            name,
-            email,
-            phone,
-            address
+            ...(name && { name }),
+            ...(email && { email }),
+            ...(phone && { phone })
         };
 
         if (avatar && avatar.startsWith('data:image')) {
-            updateData.avatar = saveBase64Image(avatar, 'users', 'avatar');
+            try {
+                updateData.avatar = saveBase64Image(avatar, 'users', 'avatar');
+            } catch (error) {
+                logger.error('Avatar save error:', { error: error.message });
+                return response(res, {
+                    statusCode: 400,
+                    message: 'Gagal menyimpan avatar',
+                    errors: error.message
+                });
+            }
         }
 
         await user.update(updateData);
@@ -71,6 +91,16 @@ const updateProfile = async (req, res) => {
         });
     } catch (error) {
         logger.error('Update profile error:', { error: error.message, stack: error.stack });
+
+        // Handle specific validation errors
+        if (error.name === 'SequelizeValidationError' || error.name === 'SequelizeUniqueConstraintError') {
+            return response(res, {
+                statusCode: 400,
+                message: 'Validasi gagal',
+                errors: error.errors.map(e => e.message)
+            });
+        }
+
         return response(res, {
             statusCode: 500,
             message: 'Terjadi kesalahan saat memperbarui profil',
