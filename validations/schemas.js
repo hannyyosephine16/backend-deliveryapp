@@ -40,7 +40,7 @@ const schemas = {
             name: Joi.string().min(3).max(50).messages(messages),
             email: Joi.string().email().messages(messages),
             phone: Joi.string().pattern(/^[0-9]{10,13}$/).messages(messages),
-            avatar: Joi.string().uri().messages(messages)
+            avatar: Joi.string().messages(messages)
         }),
     },
 
