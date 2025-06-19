@@ -61,26 +61,6 @@ router.post('/', protect, restrictTo('customer'), validate(schemas.order.create)
 
 /**
  * @swagger
- * /orders/{id}:
- *   get:
- *     summary: Get order by ID
- *     tags: [Orders]
- *     security:
- *       - bearerAuth: []
- *     parameters:
- *       - in: path
- *         name: id
- *         required: true
- *         schema:
- *           type: integer
- *     responses:
- *       200:
- *         description: Order detail
- */
-router.get('/:id', protect, cache.middleware(), getOrderById);
-
-/**
- * @swagger
  * /orders/customer:
  *   get:
  *     summary: Get orders for current customer
@@ -106,6 +86,26 @@ router.get('/customer', protect, restrictTo('customer'), cache.middleware(), get
  *         description: List of store orders
  */
 router.get('/store', protect, restrictTo('store'), cache.middleware(), getOrdersByStore);
+
+/**
+ * @swagger
+ * /orders/{id}:
+ *   get:
+ *     summary: Get order by ID
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     responses:
+ *       200:
+ *         description: Order detail
+ */
+router.get('/:id', protect, cache.middleware(), getOrderById);
 
 /**
  * @swagger
