@@ -11,7 +11,8 @@ const {
     updateOrderStatus,
     getOrdersByUser,
     getOrdersByStore,
-    createReview
+    createReview,
+    processOrderByStore
 } = require('../../controllers/orderController');
 const trackingController = require('../../controllers/trackingController');
 const { trackingLimiter } = require('../../middleware/rateLimiter');
@@ -137,6 +138,51 @@ router.get('/:id', protect, cache.middleware(), getOrderById);
  *         description: Status updated
  */
 router.patch('/:id/status', protect, restrictTo('store'), updateOrderStatus);
+
+/**
+ * @swagger
+ * /orders/{id}/process:
+ *   post:
+ *     summary: Process order by store (approve or reject)
+ *     tags: [Orders]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         required: true
+ *         schema:
+ *           type: integer
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [action]
+ *             properties:
+ *               action:
+ *                 type: string
+ *                 enum: [approve, reject]
+ *                 description: Action to take on the order
+ *     responses:
+ *       200:
+ *         description: Order processed successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                 data:
+ *                   type: object
+ *       400:
+ *         description: Invalid action or order state
+ *       404:
+ *         description: Order not found
+ */
+router.post('/:id/process', protect, restrictTo('store'), validate(schemas.order.process), processOrderByStore);
 
 /**
  * @swagger
