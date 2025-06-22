@@ -4,6 +4,7 @@ const { User, Notification } = require('../models');
 const response = require('../utils/response');
 const { saveBase64Image } = require('../utils/imageHelper');
 const { logger } = require('../utils/logger');
+const { validateFcmToken } = require('../utils/notifications');
 
 /**
  * Get user profile
@@ -42,7 +43,7 @@ const getProfile = async (req, res) => {
 const updateProfile = async (req, res) => {
     try {
         logger.info('Update profile request:', { user_id: req.user.id });
-        const { name, email, phone, avatar } = req.body;
+        const { name, email, phone, avatar, fcm_token } = req.body;
 
         const user = await User.findByPk(req.user.id);
 
@@ -65,7 +66,8 @@ const updateProfile = async (req, res) => {
         const updateData = {
             ...(name && { name }),
             ...(email && { email }),
-            ...(phone && { phone })
+            ...(phone && { phone }),
+            ...(fcm_token !== undefined && { fcm_token })
         };
 
         if (avatar && avatar.startsWith('data:image')) {
@@ -275,6 +277,51 @@ const deleteNotification = async (req, res) => {
     }
 };
 
+/**
+ * Update FCM token for push notifications
+ */
+const updateFcmToken = async (req, res) => {
+    try {
+        logger.info('Update FCM token request:', { user_id: req.user.id });
+        const { fcm_token } = req.body;
+
+        // Validate FCM token format if provided
+        if (fcm_token && !validateFcmToken(fcm_token)) {
+            logger.warn('Invalid FCM token format:', { user_id: req.user.id });
+            return response(res, {
+                statusCode: 400,
+                message: 'Format FCM token tidak valid'
+            });
+        }
+
+        const user = await User.findByPk(req.user.id);
+
+        if (!user) {
+            logger.warn('User not found:', { user_id: req.user.id });
+            return response(res, { statusCode: 404, message: 'User tidak ditemukan' });
+        }
+
+        await user.update({ fcm_token });
+
+        logger.info('FCM token updated successfully', {
+            user_id: user.id,
+            has_token: !!fcm_token
+        });
+        return response(res, {
+            statusCode: 200,
+            message: 'FCM token berhasil diperbarui',
+            data: { fcm_token }
+        });
+    } catch (error) {
+        logger.error('Update FCM token error:', { error: error.message, stack: error.stack });
+        return response(res, {
+            statusCode: 500,
+            message: 'Terjadi kesalahan saat memperbarui FCM token',
+            errors: error.message
+        });
+    }
+};
+
 module.exports = {
     getProfile,
     updateProfile,
@@ -282,5 +329,6 @@ module.exports = {
     getNotifications,
     markNotificationAsRead,
     markAllNotificationsAsRead,
-    deleteNotification
+    deleteNotification,
+    updateFcmToken
 }; 
