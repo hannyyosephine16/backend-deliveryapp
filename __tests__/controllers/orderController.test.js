@@ -110,6 +110,7 @@ describe('Order Controller - Store Reject with Accepted Driver', () => {
         // Verify order is updated to rejected
         expect(mockOrder.update).toHaveBeenCalledWith({
             order_status: 'rejected',
+            delivery_status: 'rejected',
             cancellation_reason: 'Ditolak oleh toko'
         }, { transaction: mockTransaction });
 
@@ -191,6 +192,7 @@ describe('Order Controller - Store Reject with Accepted Driver', () => {
         // Verify order is rejected
         expect(mockOrder.update).toHaveBeenCalledWith({
             order_status: 'rejected',
+            delivery_status: 'rejected',
             cancellation_reason: 'Ditolak oleh toko'
         }, { transaction: mockTransaction });
 

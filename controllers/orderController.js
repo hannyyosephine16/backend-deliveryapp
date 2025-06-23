@@ -616,6 +616,7 @@ const processOrderByStore = async (req, res) => {
 
                 await order.update({
                     order_status: 'rejected',
+                    delivery_status: 'rejected',
                     cancellation_reason: 'Ditolak oleh toko'
                 }, { transaction });
 
@@ -722,6 +723,11 @@ const updateOrderStatus = async (req, res) => {
             updateData.actual_pickup_time = new Date();
         } else if (order_status === 'delivered') {
             updateData.actual_delivery_time = new Date();
+        }
+
+        // Set delivery_status to rejected when order_status is rejected
+        if (order_status === 'rejected') {
+            updateData.delivery_status = 'rejected';
         }
 
         // If order is cancelled or rejected, return items to inventory and handle driver

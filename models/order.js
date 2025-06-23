@@ -49,7 +49,7 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: 'pending'
       },
       delivery_status: {
-        type: DataTypes.ENUM('pending', 'picked_up', 'on_way', 'delivered'),
+        type: DataTypes.ENUM('pending', 'picked_up', 'on_way', 'delivered', 'rejected'),
         defaultValue: 'pending'
       },
       total_amount: {
