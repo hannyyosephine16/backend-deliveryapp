@@ -526,7 +526,7 @@ const processOrderByStore = async (req, res) => {
                     {
                         model: Store,
                         as: 'store',
-                        include: [{ model: User, as: 'user' }]
+                        include: [{ model: User, as: 'owner' }]
                     }
                 ],
                 transaction
