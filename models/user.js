@@ -11,6 +11,9 @@ module.exports = (sequelize, DataTypes) => {
 
       // Relasi dengan Driver
       User.hasOne(models.Driver, { foreignKey: 'user_id', as: 'driver' });
+
+      // Relasi dengan ServiceOrders (Customer)
+      User.hasMany(models.ServiceOrder, { foreignKey: 'customer_id', as: 'serviceOrders' });
     }
   }
   User.init({

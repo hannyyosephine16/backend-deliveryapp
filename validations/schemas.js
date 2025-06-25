@@ -184,6 +184,47 @@ const schemas = {
         updateStatus: Joi.object({
             isAvailable: Joi.boolean().required().messages(messages)
         })
+    },
+
+    serviceOrder: {
+        create: Joi.object({
+            pickup_address: Joi.string().required().messages(messages),
+            pickup_latitude: Joi.number().min(-90).max(90).required().messages(messages),
+            pickup_longitude: Joi.number().min(-180).max(180).required().messages(messages),
+            destination_address: Joi.string().optional().messages(messages),
+            destination_latitude: Joi.number().min(-90).max(90).optional().messages(messages),
+            destination_longitude: Joi.number().min(-180).max(180).optional().messages(messages),
+            description: Joi.string().allow('').messages(messages),
+            customer_phone: Joi.string().pattern(/^[0-9]{10,13}$/).required().messages(messages)
+        }),
+        accept: Joi.object({
+            customer_id: Joi.number().integer().required().messages(messages),
+            pickup_address: Joi.string().required().messages(messages),
+            pickup_latitude: Joi.number().min(-90).max(90).required().messages(messages),
+            pickup_longitude: Joi.number().min(-180).max(180).required().messages(messages),
+            destination_address: Joi.string().required().messages(messages),
+            destination_latitude: Joi.number().min(-90).max(90).required().messages(messages),
+            destination_longitude: Joi.number().min(-180).max(180).required().messages(messages),
+            description: Joi.string().allow('').messages(messages),
+            customer_phone: Joi.string().pattern(/^[0-9]{10,13}$/).required().messages(messages)
+        }),
+        updateStatus: Joi.object({
+            status: Joi.string().valid('in_progress', 'completed', 'cancelled').required().messages(messages),
+            notes: Joi.string().allow('').messages(messages)
+        }),
+        review: Joi.object({
+            rating: Joi.number().integer().min(1).max(5).required().messages(messages),
+            comment: Joi.string().allow('').messages(messages)
+        })
+    },
+
+    masterLocation: {
+        search: Joi.object({
+            q: Joi.string().min(2).required().messages(messages)
+        }),
+        serviceFee: Joi.object({
+            pickup_location_id: Joi.number().integer().required().messages(messages)
+        })
     }
 };
 

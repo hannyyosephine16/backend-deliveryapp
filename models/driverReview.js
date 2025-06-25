@@ -15,10 +15,18 @@ module.exports = (sequelize, DataTypes) => {
                 as: 'customer',
             });
 
-            // Relasi ke Order
+            // Relasi ke Order (nullable untuk service orders)
             DriverReview.belongsTo(models.Order, {
                 foreignKey: 'order_id',
                 as: 'order',
+                required: false
+            });
+
+            // Relasi ke ServiceOrder (nullable untuk regular orders)
+            DriverReview.belongsTo(models.ServiceOrder, {
+                foreignKey: 'service_order_id',
+                as: 'serviceOrder',
+                required: false
             });
         }
     }
@@ -31,7 +39,11 @@ module.exports = (sequelize, DataTypes) => {
             },
             order_id: {
                 type: DataTypes.INTEGER,
-                allowNull: false,
+                allowNull: true,
+            },
+            service_order_id: {
+                type: DataTypes.INTEGER,
+                allowNull: true,
             },
             driver_id: {
                 type: DataTypes.INTEGER,

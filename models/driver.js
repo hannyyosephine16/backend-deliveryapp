@@ -16,6 +16,9 @@ module.exports = (sequelize, DataTypes) => {
 
       // Relasi ke DriverRequests
       Driver.hasMany(models.DriverRequest, { foreignKey: 'driver_id', as: 'driverRequests' });
+
+      // Relasi ke ServiceOrders
+      Driver.hasMany(models.ServiceOrder, { foreignKey: 'driver_id', as: 'serviceOrders' });
     }
   }
 

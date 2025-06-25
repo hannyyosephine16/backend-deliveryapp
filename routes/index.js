@@ -12,6 +12,8 @@ const driverRequestRoutes = require('./v1/driverRequestRoutes');
 const customerRoutes = require('./v1/customerRoutes');
 const menuRoutes = require('./v1/menuRoutes');
 const orderRoutes = require('./v1/orderRoutes');
+const serviceOrderRoutes = require('./v1/serviceOrderRoutes');
+const masterLocationRoutes = require('./v1/masterLocationRoutes');
 const healthRoutes = require('./v1/healthRoutes');
 
 // Mount v1 routes
@@ -23,6 +25,8 @@ router.use('/v1/driver-requests', driverRequestRoutes);
 router.use('/v1/customers', customerRoutes);
 router.use('/v1/menu', menuRoutes);
 router.use('/v1/orders', orderRoutes);
+router.use('/v1/service-orders', serviceOrderRoutes);
+router.use('/v1/locations', masterLocationRoutes);
 router.use('/v1/health', healthRoutes);
 
 module.exports = router; 
