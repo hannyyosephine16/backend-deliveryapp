@@ -28,10 +28,6 @@ module.exports = {
                 onUpdate: 'CASCADE',
                 onDelete: 'SET NULL'
             },
-            service_type: {
-                type: Sequelize.ENUM('delivery', 'transport', 'courier', 'other'),
-                allowNull: false
-            },
             pickup_address: {
                 type: Sequelize.TEXT,
                 allowNull: false
@@ -108,7 +104,6 @@ module.exports = {
         await queryInterface.addIndex('service_orders', ['customer_id']);
         await queryInterface.addIndex('service_orders', ['driver_id']);
         await queryInterface.addIndex('service_orders', ['status']);
-        await queryInterface.addIndex('service_orders', ['service_type']);
     },
 
     down: async (queryInterface) => {

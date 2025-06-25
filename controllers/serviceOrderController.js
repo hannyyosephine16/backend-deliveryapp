@@ -64,6 +64,7 @@ const createServiceOrder = async (req, res) => {
         // Create service order (destinasi tetap ke IT Del)
         const serviceOrderData = {
             customer_id: req.user.id,
+            
             pickup_address,
             pickup_latitude,
             pickup_longitude,

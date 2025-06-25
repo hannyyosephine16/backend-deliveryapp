@@ -65,10 +65,6 @@ module.exports = (sequelize, DataTypes) => {
                 type: DataTypes.TEXT,
                 allowNull: true,
             },
-            is_auto_generated: {
-                type: DataTypes.BOOLEAN,
-                defaultValue: false
-            },
             created_at: {
                 type: DataTypes.DATE,
                 allowNull: false,
@@ -84,7 +80,18 @@ module.exports = (sequelize, DataTypes) => {
             sequelize,
             modelName: 'DriverReview',
             tableName: 'driver_reviews',
-            timestamps: false
+            timestamps: false,
+            validate: {
+                // Ensure either order_id or service_order_id is present
+                eitherOrderOrServiceOrder() {
+                    if (!this.order_id && !this.service_order_id) {
+                        throw new Error('Either order_id or service_order_id must be provided');
+                    }
+                    if (this.order_id && this.service_order_id) {
+                        throw new Error('Cannot have both order_id and service_order_id');
+                    }
+                }
+            }
         }
     );
     return DriverReview;

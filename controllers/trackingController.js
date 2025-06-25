@@ -363,7 +363,6 @@ const completeDelivery = async (req, res) => {
             customer_id: order.customer_id,
             rating: delivery_rating,
             comment: `Pengiriman ${delivery_rating >= 4 ? 'tepat waktu' : 'terlambat'}. Estimasi: ${order.estimated_delivery_time}, Aktual: ${now}`,
-            is_auto_generated: true
         });
 
         // Ambil customer dan kirim notifikasi jika ada fcm_token

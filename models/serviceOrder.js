@@ -33,10 +33,6 @@ module.exports = (sequelize, DataTypes) => {
             type: DataTypes.INTEGER,
             allowNull: true
         },
-        service_type: {
-            type: DataTypes.ENUM('delivery', 'transport', 'courier', 'other'),
-            allowNull: false
-        },
         pickup_address: {
             type: DataTypes.TEXT,
             allowNull: false
