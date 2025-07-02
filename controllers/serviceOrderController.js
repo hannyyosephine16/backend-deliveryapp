@@ -6,12 +6,13 @@ const response = require('../utils/response');
 const { logger } = require('../utils/logger');
 const { sendNotification } = require('../utils/notifications');
 const euclideanDistance = require('../utils/euclideanDistance');
+const haversine = require('../utils/haversine');
 const { Op } = require('sequelize');
 
 /**
  * Get service fee from pickup location (destinasi tetap ke IT Del)
  */
-const getServiceFeeFromPickupLocation = async (pickup_address) => {
+const getServiceFeeFromPickupLocation = async (pickup_address, pickup_latitude = null, pickup_longitude = null) => {
     try {
         // Cari lokasi pickup berdasarkan nama
         const pickupLocation = await MasterLocation.findOne({
@@ -29,7 +30,31 @@ const getServiceFeeFromPickupLocation = async (pickup_address) => {
             };
         }
 
-        // Fallback jika lokasi tidak ditemukan
+        // Fallback: hitung service fee berdasarkan jarak haversine jika koordinat tersedia
+        if (pickup_latitude && pickup_longitude) {
+            const destination_latitude = 2.3834831864787818; // IT Del
+            const destination_longitude = 99.14857915147614; // IT Del
+
+            const distance_km = haversine(
+                parseFloat(pickup_latitude),
+                parseFloat(pickup_longitude),
+                destination_latitude,
+                destination_longitude
+            );
+
+            // Hitung service fee berdasarkan jarak: Rp 3000/km dengan minimum Rp 15000
+            const calculated_fee = Math.max(15000, Math.ceil(distance_km * 3000));
+            // Estimasi durasi: 2 menit per km dengan minimum 20 menit
+            const estimated_duration = Math.max(20, Math.ceil(distance_km * 2));
+
+            return {
+                service_fee: calculated_fee,
+                estimated_duration: estimated_duration,
+                calculated_distance: distance_km
+            };
+        }
+
+        // Fallback jika lokasi tidak ditemukan dan tidak ada koordinat
         return { service_fee: 20000, estimated_duration: 30 };
     } catch (error) {
         logger.error('Error getting service fee from pickup location:', error);
@@ -57,14 +82,14 @@ const createServiceOrder = async (req, res) => {
         } = req.body;
 
         // Get service fee berdasarkan pickup location (destinasi tetap IT Del)
-        const feeCalculation = await getServiceFeeFromPickupLocation(pickup_address);
+        const feeCalculation = await getServiceFeeFromPickupLocation(pickup_address, pickup_latitude, pickup_longitude);
         const service_fee = feeCalculation.service_fee;
         const estimated_duration = feeCalculation.estimated_duration;
 
         // Create service order (destinasi tetap ke IT Del)
         const serviceOrderData = {
             customer_id: req.user.id,
-            
+
             pickup_address,
             pickup_latitude,
             pickup_longitude,
@@ -154,7 +179,7 @@ const findDriverInBackgroundForService = async (serviceOrderId) => {
             }
         }, 15 * 60 * 1000);
 
-        const maxDistance = 10; // 10km radius untuk service order
+        const maxDistance = 5; // 5km radius untuk service order
         const BATCH_SIZE = 10;
 
         // Fungsi untuk mencari driver dengan optimisasi
@@ -190,45 +215,44 @@ const findDriverInBackgroundForService = async (serviceOrderId) => {
                     return;
                 }
 
-                // Cari driver terdekat menggunakan query yang sama seperti order controller
-                const drivers = await Driver.findAll({
+                // Get all active drivers with coordinates
+                const allDrivers = await Driver.findAll({
                     where: {
                         latitude: { [Op.not]: null },
                         longitude: { [Op.not]: null },
-                        status: 'active',
-                        [Op.and]: [
-                            sequelize.literal(`ST_Distance_Sphere(
-                                point(longitude, latitude),
-                                point(${serviceOrder.pickup_longitude}, ${serviceOrder.pickup_latitude})
-                            ) <= ${maxDistance * 1000}`)
-                        ]
+                        status: 'active'
                     },
                     include: [{
                         model: User,
                         as: 'user',
                         attributes: ['id', 'name', 'phone', 'fcm_token'],
                         required: true
-                    }],
-                    limit: BATCH_SIZE,
-                    order: [
-                        sequelize.literal(`ST_Distance_Sphere(
-                            point(longitude, latitude),
-                            point(${serviceOrder.pickup_longitude}, ${serviceOrder.pickup_latitude})
-                        ) ASC`)
-                    ]
+                    }]
                 });
+
+                // Filter drivers within range using euclidean distance and sort by distance
+                const driversWithDistance = allDrivers
+                    .map(driver => {
+                        const distance = euclideanDistance(
+                            parseFloat(serviceOrder.pickup_latitude),
+                            parseFloat(serviceOrder.pickup_longitude),
+                            parseFloat(driver.latitude),
+                            parseFloat(driver.longitude)
+                        );
+                        return { ...driver.toJSON(), calculatedDistance: distance };
+                    })
+                    .filter(driver => driver.calculatedDistance <= maxDistance)
+                    .sort((a, b) => a.calculatedDistance - b.calculatedDistance)
+                    .slice(0, BATCH_SIZE);
+
+                const drivers = driversWithDistance;
 
                 if (drivers.length > 0) {
                     // Assign ke driver terdekat
                     const selectedDriver = drivers[0];
 
-                    // Hitung estimated times seperti di order controller
-                    const distance = euclideanDistance(
-                        parseFloat(serviceOrder.pickup_latitude),
-                        parseFloat(serviceOrder.pickup_longitude),
-                        parseFloat(selectedDriver.latitude),
-                        parseFloat(selectedDriver.longitude)
-                    );
+                    // Gunakan distance yang sudah dihitung dengan euclidean distance
+                    const distance = selectedDriver.calculatedDistance;
 
                     const averageSpeed = 30; // km/h
                     const timeToPickup = (distance / averageSpeed) * 60; // dalam menit

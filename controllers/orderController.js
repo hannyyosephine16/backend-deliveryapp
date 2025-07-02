@@ -2,6 +2,7 @@ const { Order, OrderItem, Store, User, Driver, DriverRequest, DriverReview, Orde
 const { getQueryOptions } = require('../utils/queryHelper');
 const response = require('../utils/response');
 const euclideanDistance = require('../utils/euclideanDistance');
+const haversine = require('../utils/haversine');
 const { logger } = require('../utils/logger');
 const { sendNotification } = require('../utils/notifications');
 // Queue functionality moved to worker.js
@@ -128,24 +129,18 @@ async function findDriverInBackground(store_id, order_id) {
                     return;
                 }
 
-                // Optimisasi query dengan batasan dan indeks
-                const drivers = await Driver.findAll({
+                // Get all active drivers with coordinates
+                const allDrivers = await Driver.findAll({
                     where: {
                         latitude: { [Op.not]: null },
                         longitude: { [Op.not]: null },
-                        status: 'active',
-                        [Op.and]: [
-                            sequelize.literal(`ST_Distance_Sphere(
-                                point(longitude, latitude),
-                                point(${store.longitude}, ${store.latitude})
-                            ) <= ${maxDistance * 1000}`)
-                        ]
+                        status: 'active'
                     },
                     include: [
                         {
                             model: User,
                             as: 'user',
-                            attributes: ['id'],
+                            attributes: ['id', 'fcm_token'],
                             required: true
                         },
                         {
@@ -157,15 +152,25 @@ async function findDriverInBackground(store_id, order_id) {
                             },
                             required: false
                         }
-                    ],
-                    limit: BATCH_SIZE,
-                    order: [
-                        sequelize.literal(`ST_Distance_Sphere(
-                            point(longitude, latitude),
-                            point(${store.longitude}, ${store.latitude})
-                        ) ASC`)
                     ]
                 });
+
+                // Filter drivers within range using euclidean distance and sort by distance
+                const driversWithDistance = allDrivers
+                    .map(driver => {
+                        const distance = euclideanDistance(
+                            parseFloat(store.latitude),
+                            parseFloat(store.longitude),
+                            parseFloat(driver.latitude),
+                            parseFloat(driver.longitude)
+                        );
+                        return { ...driver.toJSON(), calculatedDistance: distance };
+                    })
+                    .filter(driver => driver.calculatedDistance <= maxDistance)
+                    .sort((a, b) => a.calculatedDistance - b.calculatedDistance)
+                    .slice(0, BATCH_SIZE);
+
+                const drivers = driversWithDistance;
 
                 if (drivers.length > 0) {
                     // Proses driver dalam batch
@@ -428,14 +433,14 @@ const placeOrder = async (req, res) => {
             if (!store) {
                 throw new Error('Store tidak ditemukan');
             }
-            // Hitung jarak (dalam km) dari store ke tujuan
-            const distance_km = euclideanDistance(
+            // Hitung jarak (dalam km) dari store ke tujuan menggunakan haversine untuk akurasi yang lebih baik
+            const distance_km = haversine(
                 Number(store.latitude),
                 Number(store.longitude),
                 destination_latitude,
                 destination_longitude
-            ) * 111; // 1 derajat ~ 111 km
-            // Hitung delivery_fee (dibulatkan ke atas)
+            );
+            // Hitung delivery_fee (dibulatkan ke atas) berdasarkan jarak haversine
             const delivery_fee = Math.ceil(distance_km * 2000);
             // Estimasi waktu pengantaran: 1.5 menit/km, minimal 5 menit
             const delivery_minutes = Math.max(5, Math.ceil(distance_km * 1.5));
